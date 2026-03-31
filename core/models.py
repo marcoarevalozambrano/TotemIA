@@ -53,7 +53,8 @@ class Turno(models.Model):
 
     codigo = models.CharField(max_length=5, unique=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='turnos')
-    es_preferencial = models.BooleanField(default=False, help_text='Cliente de atención preferencial (tercera edad)')
+    es_preferencial = models.BooleanField(default=False, help_text='Cliente de atención preferencial')
+    motivo_preferencial = models.CharField(max_length=30, blank=True, default='', help_text='Motivo: edad, solicitud, o vacío')
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='esperando')
     mesa = models.ForeignKey(Mesa, on_delete=models.SET_NULL, null=True, blank=True)
     atendido_por = models.ForeignKey(
@@ -227,6 +228,9 @@ class ConfigApariencia(models.Model):
     confirmado_completado_grad2 = models.CharField(max_length=20, default='#1e88e5', help_text='Fondo completado color 2')
     confirmado_cancelado_grad1 = models.CharField(max_length=20, default='#b71c1c', help_text='Fondo cancelado color 1')
     confirmado_cancelado_grad2 = models.CharField(max_length=20, default='#e53935', help_text='Fondo cancelado color 2')
+
+    # --- Footer pantalla ---
+    pantalla_footer_texto = models.CharField(max_length=200, default='Powered by TotemIA 2026', help_text='Texto del footer en la pantalla de llamado')
 
     def __str__(self):
         return 'Configuración de Apariencia'

@@ -50,18 +50,28 @@ def registrar_turno(request):
             email=email,
         )
 
-        # Determinar si es preferencial (tercera edad, 60+ años)
+        # Determinar si es preferencial (tercera edad o solicitud manual)
         es_preferencial = False
+        motivo = ''
+        solicita_preferencial = data.get('solicita_preferencial', False)
+
+        if solicita_preferencial:
+            es_preferencial = True
+            motivo = 'solicitud'
+
         if fecha_obj:
             from datetime import date
             hoy = date.today()
             edad = hoy.year - fecha_obj.year - ((hoy.month, hoy.day) < (fecha_obj.month, fecha_obj.day))
-            es_preferencial = edad >= 60
+            if edad >= 60:
+                es_preferencial = True
+                motivo = 'edad' if not solicita_preferencial else 'edad+solicitud'
 
         turno = Turno.objects.create(
             codigo=Turno.generar_codigo(),
             cliente=cliente,
             es_preferencial=es_preferencial,
+            motivo_preferencial=motivo,
         )
 
         return JsonResponse({
@@ -99,7 +109,7 @@ def turnos_activos(request):
     ).select_related('cliente', 'mesa').order_by('-llamado_en').first()
 
     historial = Turno.objects.filter(
-        estado__in=['atendiendo', 'completado'],
+        estado__in=['atendiendo', 'completado', 'cancelado'],
         llamado_en__date=hoy
     ).select_related('cliente', 'mesa').order_by('-llamado_en')[:5]
 
@@ -140,20 +150,17 @@ def logos_pantalla(request):
     logos = LogoPantalla.objects.filter(activo=True)
     logos_data = [{'nombre': l.nombre, 'url': l.imagen.url} for l in logos]
 
-    marquesina = None
+    marquesinas_data = []
     marquesinas = MarquesinaPantalla.objects.filter(activo=True)
-    if marquesinas.exists():
-        # Usar config de la primera para estilo, concatenar textos con separador
-        first = marquesinas.first()
-        textos = '     ★     '.join(m.texto for m in marquesinas)
-        marquesina = {
-            'texto': textos,
-            'color': first.color,
-            'velocidad': first.velocidad,
-            'tamano_fuente': first.tamano_fuente,
-        }
+    for m in marquesinas:
+        marquesinas_data.append({
+            'texto': m.texto,
+            'color': m.color,
+            'velocidad': m.velocidad,
+            'tamano_fuente': m.tamano_fuente,
+        })
 
-    return JsonResponse({'logos': logos_data, 'marquesina': marquesina})
+    return JsonResponse({'logos': logos_data, 'marquesinas': marquesinas_data})
 
 
 def _get_embed_url(url):
@@ -284,6 +291,7 @@ def llamar_turno(request):
                 'fecha_nacimiento': str(siguiente.cliente.fecha_nacimiento) if siguiente.cliente.fecha_nacimiento else '',
                 'observaciones': siguiente.cliente.observaciones,
                 'es_preferencial': siguiente.es_preferencial,
+                'motivo_preferencial': siguiente.motivo_preferencial,
             }
         })
     except Exception as e:
@@ -379,21 +387,59 @@ def actualizar_cliente(request):
 
 
 def turnos_espera(request):
-    """API: lista de turnos en espera"""
+    """API: lista de turnos en espera, paginada, con orden preferencial"""
     hoy = timezone.now().date()
-    turnos = Turno.objects.filter(
+    offset = int(request.GET.get('offset', 0))
+    limit = int(request.GET.get('limit', 20))
+    mesa_id = request.GET.get('mesa_id', '')
+
+    queryset = Turno.objects.filter(
         estado='esperando', creado_en__date=hoy
-    ).select_related('cliente').order_by('creado_en')
+    ).select_related('cliente')
+
+    total = queryset.count()
+    total_pref = queryset.filter(es_preferencial=True).count()
+
+    # Si la mesa es preferencial, ordenar preferenciales primero
+    es_mesa_pref = False
+    if mesa_id:
+        try:
+            mesa = Mesa.objects.get(id=mesa_id)
+            es_mesa_pref = mesa.preferencial
+        except Mesa.DoesNotExist:
+            pass
+
+    if es_mesa_pref:
+        from django.db.models import Case, When, IntegerField
+        queryset = queryset.annotate(
+            prioridad=Case(
+                When(es_preferencial=True, then=0),
+                default=1,
+                output_field=IntegerField(),
+            )
+        ).order_by('prioridad', 'creado_en')
+    else:
+        queryset = queryset.order_by('creado_en')
+
+    turnos = queryset[offset:offset + limit]
 
     data = [{
         'id': t.id,
         'codigo': t.codigo,
         'nombre': t.cliente.nombre_completo,
-        'creado_en': t.creado_en.strftime('%H:%M'),
+        'creado_en': timezone.localtime(t.creado_en).strftime('%H:%M'),
         'es_preferencial': t.es_preferencial,
+        'motivo_preferencial': t.motivo_preferencial,
     } for t in turnos]
 
-    return JsonResponse({'turnos': data})
+    return JsonResponse({
+        'turnos': data,
+        'total': total,
+        'total_pref': total_pref,
+        'offset': offset,
+        'has_more': (offset + limit) < total,
+        'mesa_preferencial': es_mesa_pref,
+    })
 
 
 def turno_actual(request):
@@ -507,7 +553,7 @@ def exportar_excel(request):
     ws.title = "Turnos"
 
     headers = ['Código', 'RUT', 'Nombre', 'Teléfono', 'Email', 'F. Nacimiento',
-               'Preferencial', 'Estado', 'Mesa', 'Atendido por', 'Observaciones',
+               'Preferencial', 'Motivo', 'Estado', 'Mesa', 'Atendido por', 'Observaciones',
                'Creado', 'Llamado', 'Completado']
     ws.append(headers)
 
@@ -529,6 +575,7 @@ def exportar_excel(request):
             t.cliente.email,
             str(t.cliente.fecha_nacimiento) if t.cliente.fecha_nacimiento else '',
             'Sí' if t.es_preferencial else 'No',
+            t.motivo_preferencial or '',
             t.get_estado_display(),
             t.mesa.nombre if t.mesa else '',
             t.atendido_por.get_full_name() if t.atendido_por else '',

@@ -57,7 +57,7 @@ body.cancelado { background: linear-gradient(135deg, var(--conf-cancelado1) 0%, 
         {% if turno.es_preferencial %}
         <div style="margin-top:10px;">
             <span style="background:#fff3e0; color:#e65100; padding:5px 16px; border-radius:20px; font-size:0.95rem; font-weight:600;">
-                ⭐ Atención Preferencial
+                {% if turno.motivo_preferencial == 'solicitud' %}♿{% elif turno.motivo_preferencial == 'edad+solicitud' %}👴♿{% else %}⭐{% endif %} Atención Preferencial
             </span>
         </div>
         {% endif %}

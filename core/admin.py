@@ -33,8 +33,8 @@ class ClienteAdmin(admin.ModelAdmin):
 
 @admin.register(Turno)
 class TurnoAdmin(admin.ModelAdmin):
-    list_display = ['codigo', 'cliente', 'estado', 'mesa', 'atendido_por', 'creado_en']
-    list_filter = ['estado', 'mesa']
+    list_display = ['codigo', 'cliente', 'es_preferencial', 'motivo_preferencial', 'estado', 'mesa', 'atendido_por', 'creado_en']
+    list_filter = ['estado', 'mesa', 'es_preferencial', 'motivo_preferencial']
     search_fields = ['codigo', 'cliente__nombre_completo']
 
 
@@ -112,6 +112,9 @@ class ConfigAparienciaAdmin(admin.ModelAdmin):
                        'confirmado_llamado_grad1', 'confirmado_llamado_grad2',
                        'confirmado_completado_grad1', 'confirmado_completado_grad2',
                        'confirmado_cancelado_grad1', 'confirmado_cancelado_grad2'),
+        }),
+        ('📝 Footer Pantalla', {
+            'fields': ('pantalla_footer_texto',),
         }),
     )
 

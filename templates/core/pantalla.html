@@ -40,7 +40,7 @@ body { background: var(--pantalla-fondo); }
     50% { transform: scale(1.03); }
 }
 @keyframes marquee {
-    0% { transform: translateX(100%); }
+    0% { transform: translateX(100vw); }
     100% { transform: translateX(-100%); }
 }
 .call-name {
@@ -92,8 +92,8 @@ body { background: var(--pantalla-fondo); }
 <div class="pantalla-wrapper">
     <div class="pantalla-header">
         <div id="logos-container" style="display:flex; align-items:center; gap:12px; flex-shrink:0;"></div>
-        <div id="marquesina-container" style="flex:1; overflow:hidden; margin:0 15px; display:none;">
-            <div id="marquesina-text" style="white-space:nowrap; animation:marquee 20s linear infinite;"></div>
+        <div id="marquesina-container" style="flex:1; overflow:hidden; margin:0 15px; display:none; min-width:0;">
+            <div id="marquesina-text" style="white-space:nowrap; display:inline-block; animation:marquee 20s linear infinite;"></div>
         </div>
         <div style="display:flex; align-items:center; gap:15px; flex-shrink:0;">
             <button id="btn-sonido" onclick="activarSonido()" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 16px; border-radius:20px; cursor:pointer; font-size:0.9rem;">
@@ -135,7 +135,7 @@ body { background: var(--pantalla-fondo); }
             </div>
         </div>
     </div>
-    <div class="pantalla-footer" style="display:flex; justify-content:flex-end; padding:8px 20px; color:rgba(255,255,255,0.3); font-size:0.8rem;">
+    <div class="pantalla-footer" id="pantalla-footer" style="display:flex; justify-content:flex-end; padding:8px 20px; color:rgba(255,255,255,0.3); font-size:0.8rem;">
         Powered by TotemIA 2026
     </div>
 </div>
@@ -430,12 +430,19 @@ async function cargarLogos() {
 
         const mqContainer = document.getElementById('marquesina-container');
         const mqText = document.getElementById('marquesina-text');
-        if (data.marquesina && data.marquesina.texto) {
-            mqText.textContent = data.marquesina.texto;
-            mqText.style.color = data.marquesina.color;
-            mqText.style.fontSize = data.marquesina.tamano_fuente;
-            mqText.style.fontWeight = '600';
-            mqText.style.animationDuration = data.marquesina.velocidad + 's';
+        if (data.marquesinas && data.marquesinas.length > 0) {
+            // Construir HTML con cada marquesina en su propio color/tamaño
+            let totalLen = 0;
+            const spans = data.marquesinas.map((m, i) => {
+                totalLen += m.texto.length;
+                const sep = i < data.marquesinas.length - 1 ? '<span style="color:rgba(255,255,255,0.3); margin:0 20px;">★</span>' : '';
+                return `<span style="color:${m.color}; font-size:${m.tamano_fuente}; font-weight:600;">${m.texto}</span>${sep}`;
+            }).join('');
+            mqText.innerHTML = spans;
+            // Velocidad basada en la primera config + ajuste por largo total
+            const baseSpeed = data.marquesinas[0].velocidad;
+            const adjustedSpeed = Math.max(baseSpeed, Math.ceil(totalLen / 8));
+            mqText.style.animationDuration = adjustedSpeed + 's';
             mqContainer.style.display = 'block';
         } else {
             mqContainer.style.display = 'none';

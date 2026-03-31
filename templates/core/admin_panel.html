@@ -191,7 +191,7 @@ table { font-size: 0.9rem; }
                                 <td>{{ t.cliente.nombre_completo }}</td>
                                 <td>{{ t.cliente.rut }}</td>
                                 <td>{{ t.cliente.telefono }}</td>
-                                <td>{% if t.es_preferencial %}<span style="color:#e65100;">⭐</span>{% else %}-{% endif %}</td>
+                                <td>{% if t.es_preferencial %}<span style="color:#e65100;">{% if t.motivo_preferencial == 'solicitud' %}♿{% elif t.motivo_preferencial == 'edad+solicitud' %}👴♿{% else %}⭐{% endif %}</span>{% else %}-{% endif %}</td>
                                 <td>
                                     {% if t.estado == 'esperando' %}
                                     <span class="new badge orange" data-badge-caption="">{{ t.get_estado_display }}</span>

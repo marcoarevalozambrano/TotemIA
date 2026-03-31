@@ -24,6 +24,10 @@ body { background: #f5f5f5; }
     border-radius: 10px;
 }
 .espera-list { max-height: 300px; overflow-y: auto; }
+.espera-list::-webkit-scrollbar { width: 5px; }
+.espera-list::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 5px; }
+.espera-list::-webkit-scrollbar-thumb { background: #bbb; border-radius: 5px; }
+.espera-list::-webkit-scrollbar-thumb:hover { background: #999; }
 .espera-item {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 15px; border-bottom: 1px solid #eee;
@@ -149,7 +153,7 @@ body { background: #f5f5f5; }
         <div class="col s12 m6">
             <div class="card action-card">
                 <div class="card-content">
-                    <span class="card-title"><i class="material-icons brand-text">people</i> Cola de Espera</span>
+                    <span class="card-title"><i class="material-icons brand-text">people</i> Cola de Espera <span id="espera-total" style="font-size:0.9rem; color:#999;"></span></span>
                     <div class="espera-list" id="espera-list">
                         <p class="grey-text center-align">Cargando...</p>
                     </div>
@@ -290,6 +294,11 @@ function mostrarTurno(turno) {
     const prefBadge = document.getElementById('turno-pref-badge');
     if (turno.es_preferencial) {
         prefBadge.style.display = 'inline-block';
+        const motivo = turno.motivo_preferencial || '';
+        let icon = '⭐';
+        if (motivo === 'solicitud') icon = '♿';
+        else if (motivo === 'edad+solicitud') icon = '👴♿';
+        prefBadge.querySelector('span').textContent = `${icon} Atención Preferencial`;
     } else {
         prefBadge.style.display = 'none';
     }
@@ -366,22 +375,64 @@ async function completarTurno() {
     }
 }
 
-async function fetchEspera() {
+let esperaOffset = 0;
+let esperaItems = [];
+
+async function fetchEspera(loadMore = false) {
     try {
-        const resp = await fetch('/api/turnos-espera/');
+        if (!loadMore) esperaOffset = 0;
+        const mesaId = document.getElementById('mesa-select').value || '';
+        const resp = await fetch(`/api/turnos-espera/?offset=${esperaOffset}&limit=20&mesa_id=${mesaId}`);
         const data = await resp.json();
         const list = document.getElementById('espera-list');
-        if (data.turnos.length === 0) {
+        const totalSpan = document.getElementById('espera-total');
+        const total = data.total || 0;
+
+        if (!loadMore) esperaItems = [];
+        esperaItems = esperaItems.concat(data.turnos);
+        esperaOffset = esperaItems.length;
+
+        // Header con conteo
+        let prefInfo = '';
+        if (data.mesa_preferencial && data.total_pref > 0) {
+            prefInfo = ` · ⭐ ${data.total_pref} pref.`;
+        }
+        totalSpan.textContent = `(${total}${prefInfo})`;
+
+        if (esperaItems.length === 0) {
             list.innerHTML = '<p class="grey-text center-align">No hay turnos en espera</p>';
             return;
         }
-        list.innerHTML = data.turnos.map(t => `
-            <div class="espera-item">
-                <span class="espera-code">${t.codigo}</span>
-                <span>${t.nombre}${t.es_preferencial ? ' <span style="background:#fff3e0;color:#e65100;padding:1px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">⭐</span>' : ''}</span>
-                <span class="grey-text">${t.creado_en}</span>
-            </div>
-        `).join('');
+
+        let html = '';
+        let lastWasPref = null;
+
+        esperaItems.forEach(t => {
+            // Separador visual entre preferenciales y normales
+            if (data.mesa_preferencial && lastWasPref === true && !t.es_preferencial) {
+                html += '<div style="border-top:2px dashed #e0e0e0; margin:6px 0; position:relative;"><span style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;padding:0 8px;font-size:0.7rem;color:#999;">Cola normal</span></div>';
+            }
+            lastWasPref = t.es_preferencial;
+
+            const prefBadge = t.es_preferencial ? ` <span style="background:#fff3e0;color:#e65100;padding:1px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">${t.motivo_preferencial === 'solicitud' ? '♿' : t.motivo_preferencial === 'edad+solicitud' ? '👴♿' : '⭐'}</span>` : '';
+            html += `
+                <div class="espera-item" style="${t.es_preferencial && data.mesa_preferencial ? 'background:#fff8e1;border-radius:6px;' : ''}">
+                    <span class="espera-code">${t.codigo}</span>
+                    <span>${t.nombre}${prefBadge}</span>
+                    <span class="grey-text">${t.creado_en}</span>
+                </div>`;
+        });
+
+        if (data.has_more) {
+            const restantes = total - esperaItems.length;
+            html += `<div class="center-align" style="padding:10px;">
+                <a href="#" onclick="fetchEspera(true); return false;" class="btn-small waves-effect" style="background:var(--btn-guardar1);border-radius:8px;font-size:0.8rem;">
+                    Cargar más (${restantes} restantes)
+                </a>
+            </div>`;
+        }
+
+        list.innerHTML = html;
     } catch (e) {
         console.error('Error:', e);
     }
