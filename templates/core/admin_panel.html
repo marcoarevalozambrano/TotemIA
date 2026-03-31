@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Panel{% endblock %}
+{% block extra_css %}
+body { background: #f5f5f5; }
+.admin-nav { background: linear-gradient(135deg, var(--nav-grad1), var(--nav-grad2)) !important; }
+.stat-card { border-radius: 12px; text-align: center; }
+.stat-card .card-content { padding: 20px; }
+.stat-number { font-size: 3rem; font-weight: 700; }
+.data-card { border-radius: 12px; }
+.admin-container { max-width: 1400px; margin: 20px auto; padding: 0 15px; }
+table { font-size: 0.9rem; }
+.chart-card { border-radius: 12px; }
+.chart-card .card-content { padding: 20px; }
+.metric-mini { font-size: 1.8rem; font-weight: 700; }
+.metric-label { font-size: 0.85rem; color: #999; }
+{% endblock %}
+
+{% block body %}
+<nav class="admin-nav">
+    <div class="nav-wrapper" style="padding:0 20px;">
+        <a href="#" class="brand-logo">
+            <i class="material-icons">dashboard</i> TotemIA - {% if es_admin %}Admin{% else %}Mi Panel{% endif %}
+        </a>
+        <ul class="right">
+            <li><a href="{% url 'core:mesa' %}"><i class="material-icons left">desktop_mac</i>Mesa</a></li>
+            {% if es_admin %}
+            <li><a href="{% url 'core:ver_logs' %}"><i class="material-icons left">list_alt</i>Logs</a></li>
+            {% endif %}
+            <li><a href="{% url 'core:logout' %}"><i class="material-icons">exit_to_app</i></a></li>
+        </ul>
+    </div>
+</nav>
+
+<div class="admin-container">
+    <!-- Indicadores globales (todos ven) -->
+    <div class="row">
+        <div class="col s12 m4">
+            <div class="card stat-card">
+                <div class="card-content">
+                    <span class="grey-text">Turnos Hoy</span>
+                    <div class="stat-number brand-text">{{ total_hoy }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m4">
+            <div class="card stat-card">
+                <div class="card-content">
+                    <span class="grey-text">En Espera</span>
+                    <div class="stat-number" style="color:#ff6f00;">{{ total_espera }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m4">
+            <div class="card stat-card">
+                <div class="card-content">
+                    <span class="grey-text">Atendidos</span>
+                    <div class="stat-number" style="color:#2e7d32;">{{ total_atendidos }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ JORNADA DEL DÍA ============ -->
+    <div class="row">
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini brand-text" id="op-mis-completados">-</div>
+                    <div class="metric-label">Mis Atendidos</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini" style="color:#2e7d32;" id="op-mi-promedio">-</div>
+                    <div class="metric-label">Mi Prom. (min)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini" style="color:#e65100;" id="op-mis-cancelados">-</div>
+                    <div class="metric-label">Mis Cancelados</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini" style="color:#1565c0;" id="op-prom-global">-</div>
+                    <div class="metric-label">Prom. Global (min)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini" style="color:#6a1b9a;" id="op-prom-espera">-</div>
+                    <div class="metric-label">Prom. Espera (min)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col s6 m2">
+            <div class="card chart-card">
+                <div class="card-content center-align">
+                    <div class="metric-mini" style="color:#ff6f00;" id="op-en-espera">-</div>
+                    <div class="metric-label">En Espera Ahora</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col s12 m8">
+            <div class="card chart-card">
+                <div class="card-content">
+                    <span class="card-title" style="font-size:1.1rem;"><i class="material-icons brand-text tiny">timeline</i> Flujo de la Jornada (por hora)</span>
+                    <canvas id="chartFlujo" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col s12 m4">
+            <div class="card chart-card">
+                <div class="card-content">
+                    <span class="card-title" style="font-size:1.1rem;"><i class="material-icons tiny" style="color:#e65100;">star</i> Preferenciales vs Normales</span>
+                    <canvas id="chartPref" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estado de mesas en tiempo real -->
+    <div class="row">
+        <div class="col s12">
+            <div class="card chart-card">
+                <div class="card-content">
+                    <span class="card-title" style="font-size:1.1rem;"><i class="material-icons brand-text tiny">desktop_mac</i> Estado de Mesas - Jornada Actual</span>
+                    <table class="striped responsive-table" style="margin-top:10px;">
+                        <thead>
+                            <tr>
+                                <th>Mesa</th>
+                                <th>Modo</th>
+                                <th>Turno Actual</th>
+                                <th>Operador</th>
+                                <th>Completados</th>
+                                <th>Cancelados</th>
+                                <th>Prom. Atención</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mesas-tbody">
+                            <tr><td colspan="7" class="center-align grey-text">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ TABLA DE DATOS (solo admin) ============ -->
+    {% if es_admin %}
+    <div class="row">
+        <div class="col s12">
+            <div class="card data-card">
+                <div class="card-content">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                        <span class="card-title" style="margin:0;"><i class="material-icons brand-text">table_chart</i> Turnos del Día</span>
+                        <a href="{% url 'core:exportar_excel' %}" class="btn waves-effect blue-grey" style="border-radius:8px;">
+                            <i class="material-icons left">file_download</i> Exportar Excel
+                        </a>
+                    </div>
+                    <table class="striped responsive-table" style="margin-top:15px;">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nombre</th>
+                                <th>RUT</th>
+                                <th>Teléfono</th>
+                                <th>Pref.</th>
+                                <th>Estado</th>
+                                <th>Mesa</th>
+                                <th>Atendido por</th>
+                                <th>Hora</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in turnos %}
+                            <tr>
+                                <td><strong>{{ t.codigo }}</strong></td>
+                                <td>{{ t.cliente.nombre_completo }}</td>
+                                <td>{{ t.cliente.rut }}</td>
+                                <td>{{ t.cliente.telefono }}</td>
+                                <td>{% if t.es_preferencial %}<span style="color:#e65100;">⭐</span>{% else %}-{% endif %}</td>
+                                <td>
+                                    {% if t.estado == 'esperando' %}
+                                    <span class="new badge orange" data-badge-caption="">{{ t.get_estado_display }}</span>
+                                    {% elif t.estado == 'llamado' %}
+                                    <span class="new badge blue" data-badge-caption="">{{ t.get_estado_display }}</span>
+                                    {% elif t.estado == 'completado' %}
+                                    <span class="new badge green" data-badge-caption="">{{ t.get_estado_display }}</span>
+                                    {% else %}
+                                    <span class="new badge grey" data-badge-caption="">{{ t.get_estado_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ t.mesa.nombre|default:"-" }}</td>
+                                <td>{{ t.atendido_por.get_full_name|default:"-" }}</td>
+                                <td>{{ t.creado_en|date:"H:i" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="9" class="center-align grey-text">No hay turnos hoy</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+let chartFlujo, chartPref;
+
+async function cargarEstadisticas() {
+    try {
+        const resp = await fetch('/api/mis-estadisticas/');
+        const d = await resp.json();
+
+        // Indicadores
+        document.getElementById('op-mis-completados').textContent = d.mis_completados;
+        document.getElementById('op-mi-promedio').textContent = d.mi_promedio_min;
+        document.getElementById('op-mis-cancelados').textContent = d.mis_cancelados;
+        document.getElementById('op-prom-global').textContent = d.promedio_global_min;
+        document.getElementById('op-prom-espera').textContent = d.promedio_espera_min;
+        document.getElementById('op-en-espera').textContent = d.en_espera;
+
+        // Flujo por hora (ingresados vs completados)
+        if (chartFlujo) chartFlujo.destroy();
+        chartFlujo = new Chart(document.getElementById('chartFlujo'), {
+            type: 'bar',
+            data: {
+                labels: d.flujo.labels,
+                datasets: [
+                    {
+                        label: 'Ingresados',
+                        data: d.flujo.ingresados,
+                        backgroundColor: 'rgba(21,101,192,0.6)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'Completados',
+                        data: d.flujo.completados,
+                        backgroundColor: 'rgba(46,125,50,0.6)',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'top' } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+
+        // Preferenciales vs normales
+        if (chartPref) chartPref.destroy();
+        chartPref = new Chart(document.getElementById('chartPref'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Preferencial ⭐', 'Normal'],
+                datasets: [{
+                    data: [d.preferenciales.pref, d.preferenciales.normal],
+                    backgroundColor: ['#ff8f00', '#1565c0'],
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+
+        // Tabla de mesas
+        const tbody = document.getElementById('mesas-tbody');
+        if (d.mesas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="center-align grey-text">Sin mesas activas</td></tr>';
+        } else {
+            tbody.innerHTML = d.mesas.map(m => `
+                <tr>
+                    <td><strong>${m.nombre}</strong></td>
+                    <td>${m.preferencial ? '<span style="color:#e65100;">⭐ Preferencial</span>' : 'Normal'}</td>
+                    <td>${m.turno_actual ? '<span class="new badge blue" data-badge-caption="">' + m.turno_actual + '</span>' : '<span class="grey-text">-</span>'}</td>
+                    <td>${m.operador}</td>
+                    <td><strong style="color:#2e7d32;">${m.completados}</strong></td>
+                    <td><strong style="color:#e65100;">${m.cancelados}</strong></td>
+                    <td>${m.promedio_min} min</td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error('Error cargando estadísticas:', e);
+    }
+}
+
+cargarEstadisticas();
+setInterval(cargarEstadisticas, 15000);
+</script>
+{% endblock %}

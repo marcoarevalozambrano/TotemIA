@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Mesa de Atención{% endblock %}
+{% block extra_css %}
+body { background: #f5f5f5; }
+.mesa-nav { background: linear-gradient(135deg, var(--nav-grad1), var(--nav-grad2)) !important; }
+.mesa-container { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
+.action-card { border-radius: 12px; }
+.action-card .card-content { padding: 20px; }
+.turno-badge {
+    display: inline-block; font-size: 2.5rem; font-weight: 700;
+    color: #1565c0; letter-spacing: 4px; padding: 10px 20px;
+    background: #e3f2fd; border-radius: 12px; margin: 10px 0;
+}
+.btn-llamar {
+    background: linear-gradient(135deg, var(--btn-llamar1), var(--btn-llamar2)) !important;
+    height: 56px; font-size: 1.2rem; border-radius: 10px;
+}
+.btn-completar {
+    background: linear-gradient(135deg, var(--btn-completar1), var(--btn-completar2)) !important;
+    height: 48px; border-radius: 10px;
+}
+.btn-guardar {
+    background: linear-gradient(135deg, var(--btn-guardar1), var(--btn-guardar2)) !important;
+    border-radius: 10px;
+}
+.espera-list { max-height: 300px; overflow-y: auto; }
+.espera-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 15px; border-bottom: 1px solid #eee;
+}
+.espera-item:last-child { border-bottom: none; }
+.espera-code { font-weight: 700; color: #1565c0; font-size: 1.1rem; }
+.mesa-select-wrapper {
+    background: #e3f2fd; padding: 15px 20px; border-radius: 12px;
+    margin-bottom: 20px;
+}
+{% endblock %}
+
+{% block body %}
+<nav class="mesa-nav">
+    <div class="nav-wrapper" style="padding:0 20px;">
+        <a href="#" class="brand-logo">
+            <i class="material-icons">desktop_mac</i> TotemIA - Mesa
+        </a>
+        <ul class="right">
+            <li><span>{{ request.user.get_full_name|default:request.user.username }}</span></li>
+            <li><a href="{% url 'core:admin_panel' %}"><i class="material-icons">settings</i></a></li>
+            <li><a href="{% url 'core:logout' %}"><i class="material-icons">exit_to_app</i></a></li>
+        </ul>
+    </div>
+</nav>
+
+<div class="mesa-container">
+    <div class="mesa-select-wrapper">
+        <div class="input-field" style="margin:0 0 10px;">
+            <select id="mesa-select" onchange="cambiarMesa()">
+                <option value="" disabled selected>Seleccione su mesa</option>
+                {% for m in mesas %}
+                <option value="{{ m.id }}" data-preferencial="{{ m.preferencial|yesno:'true,false' }}">{{ m.nombre }}</option>
+                {% endfor %}
+            </select>
+            <label>Mesa de Atención</label>
+        </div>
+        <div id="pref-toggle-wrapper" style="display:none;">
+            <div class="switch" style="display:flex; align-items:center; gap:10px;">
+                <label style="font-size:0.95rem; color:#333;">
+                    Normal
+                    <input type="checkbox" id="pref-toggle" onchange="togglePreferencial()">
+                    <span class="lever"></span>
+                    ⭐ Preferencial
+                </label>
+                <span id="pref-status" style="font-size:0.8rem; color:#999;"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Columna izquierda: Acciones -->
+        <div class="col s12 m6">
+            <div class="card action-card">
+                <div class="card-content">
+                    <span class="card-title"><i class="material-icons brand-text">notifications_active</i> Llamar Turno</span>
+                    <button class="btn btn-llamar waves-effect" onclick="llamarTurno()" id="btnLlamar" style="width:100%;" disabled>
+                        <i class="material-icons left">record_voice_over</i> Llamar Siguiente
+                    </button>
+                </div>
+            </div>
+
+            <!-- Turno actual -->
+            <div class="card action-card" id="turno-actual-card" style="display:none;">
+                <div class="card-content">
+                    <span class="card-title"><i class="material-icons brand-text">person</i> Atendiendo</span>
+                    <div class="center-align">
+                        <div class="turno-badge" id="turno-codigo"></div>
+                        <div id="turno-pref-badge" style="display:none; margin-top:5px;">
+                            <span style="background:#fff3e0; color:#e65100; padding:4px 14px; border-radius:20px; font-size:0.9rem; font-weight:600;">
+                                ⭐ Atención Preferencial
+                            </span>
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top:15px;">
+                        <div class="input-field col s12">
+                            <i class="material-icons prefix">person</i>
+                            <input id="edit-nombre" type="text">
+                            <label for="edit-nombre" class="active">Nombre Completo</label>
+                        </div>
+                        <div class="input-field col s6">
+                            <i class="material-icons prefix">badge</i>
+                            <input id="edit-rut" type="text">
+                            <label for="edit-rut" class="active">RUT</label>
+                        </div>
+                        <div class="input-field col s6">
+                            <i class="material-icons prefix">cake</i>
+                            <input id="edit-fecha" type="date">
+                            <label for="edit-fecha" class="active">F. Nacimiento</label>
+                        </div>
+                        <div class="input-field col s6">
+                            <i class="material-icons prefix">phone</i>
+                            <input id="edit-telefono" type="tel">
+                            <label for="edit-telefono" class="active">Teléfono</label>
+                        </div>
+                        <div class="input-field col s6">
+                            <i class="material-icons prefix">email</i>
+                            <input id="edit-email" type="email">
+                            <label for="edit-email" class="active">Email</label>
+                        </div>
+                        <div class="input-field col s12">
+                            <i class="material-icons prefix">notes</i>
+                            <textarea id="edit-obs" class="materialize-textarea"></textarea>
+                            <label for="edit-obs" class="active">Observaciones</label>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <button class="btn btn-guardar waves-effect" onclick="guardarDatos()" style="flex:1;">
+                            <i class="material-icons left">save</i> Guardar
+                        </button>
+                        <button class="btn waves-effect" onclick="rellamarTurno()" style="flex:1; background:linear-gradient(135deg,#e65100,#ff6f00)!important; border-radius:10px;">
+                            <i class="material-icons left">volume_up</i> Rellamar
+                        </button>
+                        <button class="btn btn-completar waves-effect" onclick="completarTurno()" style="flex:1;">
+                            <i class="material-icons left">check</i> Completar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna derecha: Cola de espera -->
+        <div class="col s12 m6">
+            <div class="card action-card">
+                <div class="card-content">
+                    <span class="card-title"><i class="material-icons brand-text">people</i> Cola de Espera</span>
+                    <div class="espera-list" id="espera-list">
+                        <p class="grey-text center-align">Cargando...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="card action-card">
+                <div class="card-content center-align">
+                    {% if es_admin %}
+                    <a href="{% url 'core:exportar_excel' %}" class="btn waves-effect blue-grey" style="border-radius:10px;">
+                        <i class="material-icons left">file_download</i> Exportar Excel
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    M.FormSelect.init(document.querySelectorAll('select'));
+    M.updateTextFields();
+    M.textareaAutoResize(document.getElementById('edit-obs'));
+    fetchEspera();
+    setInterval(fetchEspera, 5000);
+
+    // Restaurar mesa seleccionada y turno activo
+    const savedMesa = localStorage.getItem('totemia_mesa_id');
+    if (savedMesa) {
+        const sel = document.getElementById('mesa-select');
+        for (let i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === savedMesa) {
+                sel.selectedIndex = i;
+                M.FormSelect.init(sel);
+                cambiarMesa();
+                recuperarTurnoActivo(savedMesa);
+                break;
+            }
+        }
+    }
+});
+
+let currentTurnoId = null;
+
+function cambiarMesa() {
+    const sel = document.getElementById('mesa-select');
+    const mesaId = sel.value;
+    if (mesaId) {
+        document.getElementById('btnLlamar').disabled = false;
+        localStorage.setItem('totemia_mesa_id', mesaId);
+        // Mostrar toggle y sincronizar estado
+        const opt = sel.options[sel.selectedIndex];
+        const isPref = opt.getAttribute('data-preferencial') === 'true';
+        document.getElementById('pref-toggle').checked = isPref;
+        document.getElementById('pref-toggle-wrapper').style.display = 'block';
+        actualizarPrefStatus(isPref);
+    }
+}
+
+async function recuperarTurnoActivo(mesaId) {
+    try {
+        const resp = await fetch(`/api/turno-actual/?mesa_id=${mesaId}`);
+        const data = await resp.json();
+        if (data.turno) {
+            currentTurnoId = data.turno.id;
+            mostrarTurno(data.turno);
+        }
+    } catch (e) {
+        console.error('Error recuperando turno:', e);
+    }
+}
+
+function actualizarPrefStatus(isPref) {
+    const st = document.getElementById('pref-status');
+    if (isPref) {
+        st.textContent = 'Prioriza tercera edad';
+        st.style.color = '#e65100';
+    } else {
+        st.textContent = 'Orden normal de llegada';
+        st.style.color = '#999';
+    }
+}
+
+async function togglePreferencial() {
+    const mesaId = document.getElementById('mesa-select').value;
+    if (!mesaId) return;
+    const checked = document.getElementById('pref-toggle').checked;
+    try {
+        const resp = await fetch('/api/toggle-preferencial/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ mesa_id: parseInt(mesaId), preferencial: checked })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            // Actualizar data-attribute en el option
+            const sel = document.getElementById('mesa-select');
+            sel.options[sel.selectedIndex].setAttribute('data-preferencial', checked ? 'true' : 'false');
+            actualizarPrefStatus(checked);
+            M.toast({html: checked ? '⭐ Mesa preferencial activada' : 'Mesa en modo normal', classes: checked ? 'orange' : 'blue'});
+        }
+    } catch (e) {
+        M.toast({html: 'Error al cambiar modo', classes: 'red'});
+        document.getElementById('pref-toggle').checked = !checked;
+    }
+}
+
+async function llamarTurno() {
+    const mesaId = document.getElementById('mesa-select').value;
+    if (!mesaId) { M.toast({html: 'Seleccione una mesa', classes: 'red'}); return; }
+
+    try {
+        const resp = await fetch('/api/llamar-turno/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ mesa_id: parseInt(mesaId) })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            currentTurnoId = data.turno.id;
+            mostrarTurno(data.turno);
+            fetchEspera();
+            M.toast({html: `Llamando turno ${data.turno.codigo}`, classes: 'green'});
+        } else {
+            M.toast({html: data.error || 'No hay turnos en espera', classes: 'orange'});
+        }
+    } catch (e) {
+        M.toast({html: 'Error de conexión', classes: 'red'});
+    }
+}
+
+function mostrarTurno(turno) {
+    document.getElementById('turno-actual-card').style.display = 'block';
+    document.getElementById('turno-codigo').textContent = turno.codigo;
+    // Badge preferencial
+    const prefBadge = document.getElementById('turno-pref-badge');
+    if (turno.es_preferencial) {
+        prefBadge.style.display = 'inline-block';
+    } else {
+        prefBadge.style.display = 'none';
+    }
+    document.getElementById('edit-nombre').value = turno.nombre || '';
+    document.getElementById('edit-rut').value = turno.rut || '';
+    document.getElementById('edit-fecha').value = turno.fecha_nacimiento || '';
+    document.getElementById('edit-telefono').value = turno.telefono || '';
+    document.getElementById('edit-email').value = turno.email || '';
+    document.getElementById('edit-obs').value = turno.observaciones || '';
+    M.updateTextFields();
+    M.textareaAutoResize(document.getElementById('edit-obs'));
+}
+
+async function guardarDatos() {
+    if (!currentTurnoId) return;
+    try {
+        const resp = await fetch('/api/actualizar-cliente/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                turno_id: currentTurnoId,
+                nombre_completo: document.getElementById('edit-nombre').value,
+                rut: document.getElementById('edit-rut').value,
+                fecha_nacimiento: document.getElementById('edit-fecha').value,
+                telefono: document.getElementById('edit-telefono').value,
+                email: document.getElementById('edit-email').value,
+                observaciones: document.getElementById('edit-obs').value,
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            M.toast({html: 'Datos guardados', classes: 'green'});
+        }
+    } catch (e) {
+        M.toast({html: 'Error al guardar', classes: 'red'});
+    }
+}
+
+async function rellamarTurno() {
+    if (!currentTurnoId) return;
+    try {
+        const resp = await fetch('/api/rellamar-turno/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ turno_id: currentTurnoId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            M.toast({html: '📢 Turno rellamado', classes: 'orange'});
+        }
+    } catch (e) {
+        M.toast({html: 'Error al rellamar', classes: 'red'});
+    }
+}
+
+async function completarTurno() {
+    if (!currentTurnoId) return;
+    await guardarDatos();
+    try {
+        const resp = await fetch('/api/completar-turno/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ turno_id: currentTurnoId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            currentTurnoId = null;
+            document.getElementById('turno-actual-card').style.display = 'none';
+            fetchEspera();
+            M.toast({html: 'Atención completada', classes: 'green'});
+        }
+    } catch (e) {
+        M.toast({html: 'Error al completar', classes: 'red'});
+    }
+}
+
+async function fetchEspera() {
+    try {
+        const resp = await fetch('/api/turnos-espera/');
+        const data = await resp.json();
+        const list = document.getElementById('espera-list');
+        if (data.turnos.length === 0) {
+            list.innerHTML = '<p class="grey-text center-align">No hay turnos en espera</p>';
+            return;
+        }
+        list.innerHTML = data.turnos.map(t => `
+            <div class="espera-item">
+                <span class="espera-code">${t.codigo}</span>
+                <span>${t.nombre}${t.es_preferencial ? ' <span style="background:#fff3e0;color:#e65100;padding:1px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">⭐</span>' : ''}</span>
+                <span class="grey-text">${t.creado_en}</span>
+            </div>
+        `).join('');
+    } catch (e) {
+        console.error('Error:', e);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TotemIA{% endblock %}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <style>
+        :root {
+            --nav-grad1: #1565c0; --nav-grad2: #0d47a1;
+            --btn-llamar1: #ff6f00; --btn-llamar2: #ff8f00;
+            --btn-completar1: #2e7d32; --btn-completar2: #43a047;
+            --btn-guardar1: #1565c0; --btn-guardar2: #1e88e5;
+            --pantalla-fondo: #0d1b2a;
+            --pantalla-call1: #1565c0; --pantalla-call2: #0d47a1;
+            --pantalla-codigo-color: #ffffff; --pantalla-codigo-fuente: 'Roboto', sans-serif; --pantalla-codigo-tamano: 10rem;
+            --pantalla-nombre-color: #ffca28; --pantalla-nombre-fuente: 'Roboto', sans-serif; --pantalla-nombre-tamano: 3rem;
+            --pantalla-mesa-color: #81d4fa; --pantalla-mesa-fuente: 'Roboto', sans-serif; --pantalla-mesa-tamano: 4rem;
+            --pantalla-espera1: #ff6f00; --pantalla-espera2: #ff8f00;
+            --pantalla-hist-codigo: #ffca28; --pantalla-hist-nombre: #e0e0e0; --pantalla-hist-mesa: #81d4fa;
+            --totem-fondo1: #0d47a1; --totem-fondo2: #1565c0; --totem-fondo3: #1e88e5;
+            --totem-header1: #ff6f00; --totem-header2: #ff8f00;
+            --conf-esperando1: #2e7d32; --conf-esperando2: #43a047;
+            --conf-llamado1: #e65100; --conf-llamado2: #ff6f00;
+            --conf-completado1: #1565c0; --conf-completado2: #1e88e5;
+            --conf-cancelado1: #b71c1c; --conf-cancelado2: #e53935;
+        }
+        body { font-family: 'Roboto', sans-serif; }
+        .brand-bg { background-color: var(--nav-grad1) !important; }
+        .brand-text { color: var(--nav-grad1) !important; }
+        .brand-bg-dark { background-color: var(--nav-grad2) !important; }
+        .brand-bg-accent { background-color: var(--btn-llamar1) !important; }
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    {% block body %}{% endblock %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+    (async function loadTheme() {
+        try {
+            const r = await fetch('/api/apariencia/');
+            const d = await r.json();
+            const s = document.documentElement.style;
+            s.setProperty('--nav-grad1', d.nav_grad1);
+            s.setProperty('--nav-grad2', d.nav_grad2);
+            s.setProperty('--btn-llamar1', d.btn_llamar_grad1);
+            s.setProperty('--btn-llamar2', d.btn_llamar_grad2);
+            s.setProperty('--btn-completar1', d.btn_completar_grad1);
+            s.setProperty('--btn-completar2', d.btn_completar_grad2);
+            s.setProperty('--btn-guardar1', d.btn_guardar_grad1);
+            s.setProperty('--btn-guardar2', d.btn_guardar_grad2);
+            s.setProperty('--pantalla-fondo', d.pantalla_fondo);
+            s.setProperty('--pantalla-call1', d.pantalla_call_grad1);
+            s.setProperty('--pantalla-call2', d.pantalla_call_grad2);
+            s.setProperty('--pantalla-codigo-color', d.pantalla_codigo_color);
+            s.setProperty('--pantalla-codigo-fuente', d.pantalla_codigo_fuente);
+            s.setProperty('--pantalla-codigo-tamano', d.pantalla_codigo_tamano);
+            s.setProperty('--pantalla-nombre-color', d.pantalla_nombre_color);
+            s.setProperty('--pantalla-nombre-fuente', d.pantalla_nombre_fuente);
+            s.setProperty('--pantalla-nombre-tamano', d.pantalla_nombre_tamano);
+            s.setProperty('--pantalla-mesa-color', d.pantalla_mesa_color);
+            s.setProperty('--pantalla-mesa-fuente', d.pantalla_mesa_fuente);
+            s.setProperty('--pantalla-mesa-tamano', d.pantalla_mesa_tamano);
+            s.setProperty('--pantalla-espera1', d.pantalla_espera_grad1);
+            s.setProperty('--pantalla-espera2', d.pantalla_espera_grad2);
+            s.setProperty('--pantalla-hist-codigo', d.pantalla_historial_codigo);
+            s.setProperty('--pantalla-hist-nombre', d.pantalla_historial_nombre);
+            s.setProperty('--pantalla-hist-mesa', d.pantalla_historial_mesa);
+            s.setProperty('--totem-fondo1', d.totem_fondo_grad1);
+            s.setProperty('--totem-fondo2', d.totem_fondo_grad2);
+            s.setProperty('--totem-fondo3', d.totem_fondo_grad3);
+            s.setProperty('--totem-header1', d.totem_header_grad1);
+            s.setProperty('--totem-header2', d.totem_header_grad2);
+            s.setProperty('--conf-esperando1', d.confirmado_esperando_grad1);
+            s.setProperty('--conf-esperando2', d.confirmado_esperando_grad2);
+            s.setProperty('--conf-llamado1', d.confirmado_llamado_grad1);
+            s.setProperty('--conf-llamado2', d.confirmado_llamado_grad2);
+            s.setProperty('--conf-completado1', d.confirmado_completado_grad1);
+            s.setProperty('--conf-completado2', d.confirmado_completado_grad2);
+            s.setProperty('--conf-cancelado1', d.confirmado_cancelado_grad1);
+            s.setProperty('--conf-cancelado2', d.confirmado_cancelado_grad2);
+        } catch(e) { console.log('Theme defaults used'); }
+    })();
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

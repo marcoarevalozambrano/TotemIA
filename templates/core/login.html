@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Iniciar Sesión{% endblock %}
+{% block extra_css %}
+html, body { height: 100%; }
+body { background: linear-gradient(135deg, #0d47a1, #1565c0); display: flex; align-items: center; justify-content: center; }
+.login-card { width: 100%; max-width: 400px; border-radius: 16px; margin: 20px; }
+.login-header { background: linear-gradient(135deg, #ff6f00, #ff8f00); padding: 30px; text-align: center; border-radius: 16px 16px 0 0; }
+.login-header h5 { color: white; margin: 0; }
+.login-body { padding: 30px; }
+.btn-login { background: linear-gradient(135deg, #1565c0, #1e88e5) !important; width: 100%; height: 48px; border-radius: 8px; font-size: 1.1rem; }
+{% endblock %}
+
+{% block body %}
+<div class="login-card card">
+    <div class="login-header">
+        <h5><i class="material-icons" style="vertical-align:middle;">lock</i> TotemIA</h5>
+    </div>
+    <div class="login-body">
+        {% if error %}
+        <div class="card-panel red lighten-4 red-text text-darken-4" style="border-radius:8px;">
+            {{ error }}
+        </div>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <div class="input-field">
+                <i class="material-icons prefix">person</i>
+                <input id="username" name="username" type="text" required>
+                <label for="username">Usuario</label>
+            </div>
+            <div class="input-field">
+                <i class="material-icons prefix">vpn_key</i>
+                <input id="password" name="password" type="password" required>
+                <label for="password">Contraseña</label>
+            </div>
+            <button type="submit" class="btn btn-login waves-effect">
+                <i class="material-icons left">login</i> Ingresar
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

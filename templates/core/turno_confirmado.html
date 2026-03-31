@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Turno {{ turno.codigo }}{% endblock %}
+{% block extra_css %}
+html, body { height: 100%; margin: 0; }
+body { background: linear-gradient(135deg, var(--conf-esperando1) 0%, var(--conf-esperando2) 100%); transition: background 0.5s; }
+body.llamado { background: linear-gradient(135deg, var(--conf-llamado1) 0%, var(--conf-llamado2) 100%); }
+body.completado { background: linear-gradient(135deg, var(--conf-completado1) 0%, var(--conf-completado2) 100%); }
+body.cancelado { background: linear-gradient(135deg, var(--conf-cancelado1) 0%, var(--conf-cancelado2) 100%); }
+.confirm-container {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.confirm-card {
+    width: 100%; max-width: 500px; border-radius: 16px; text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3); padding: 40px 30px;
+}
+.turno-code {
+    font-size: 4.5rem; font-weight: 700; color: #1565c0;
+    letter-spacing: 8px; margin: 20px 0;
+}
+.status-icon {
+    font-size: 4rem; border-radius: 50%; padding: 15px;
+    display: inline-block;
+}
+.status-icon.esperando { color: #2e7d32; background: #e8f5e9; }
+.status-icon.llamado { color: #e65100; background: #fff3e0; animation: pulseIcon 1s ease-in-out infinite; }
+.status-icon.completado { color: #1565c0; background: #e3f2fd; }
+.status-icon.cancelado { color: #b71c1c; background: #ffebee; }
+@keyframes pulseIcon {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+.status-msg { font-size: 1.3rem; margin-top: 15px; font-weight: 500; }
+.mesa-info { font-size: 1.5rem; color: #e65100; font-weight: 700; margin-top: 10px; }
+.sub-msg { color: #999; margin-top: 15px; font-size: 0.95rem; }
+#llamado-alert {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(230, 81, 0, 0.95); z-index: 1000;
+    display: none; align-items: center; justify-content: center; flex-direction: column;
+}
+#llamado-alert .alert-code { font-size: 6rem; font-weight: 700; color: white; letter-spacing: 10px; }
+#llamado-alert .alert-mesa { font-size: 2.5rem; color: #ffca28; margin-top: 15px; }
+#llamado-alert .alert-msg { font-size: 1.5rem; color: rgba(255,255,255,0.9); margin-top: 20px; }
+{% endblock %}
+
+{% block body %}
+<!-- Alerta fullscreen cuando llaman -->
+<div id="llamado-alert">
+    <div class="alert-code" id="alert-code">{{ turno.codigo }}</div>
+    <div class="alert-mesa" id="alert-mesa"></div>
+    <div class="alert-msg">¡Es su turno! Diríjase a la mesa indicada</div>
+</div>
+
+<div class="confirm-container">
+    <div class="card confirm-card">
+        <i class="material-icons status-icon esperando" id="status-icon">hourglass_empty</i>
+        <h5 style="color:#333;margin-top:20px;" id="status-title">Su turno ha sido registrado</h5>
+        {% if turno.es_preferencial %}
+        <div style="margin-top:10px;">
+            <span style="background:#fff3e0; color:#e65100; padding:5px 16px; border-radius:20px; font-size:0.95rem; font-weight:600;">
+                ⭐ Atención Preferencial
+            </span>
+        </div>
+        {% endif %}
+        <div class="turno-code">{{ turno.codigo }}</div>
+        <p style="font-size:1.2rem;color:#666;">{{ turno.cliente.nombre_completo }}</p>
+        <div class="status-msg" id="status-msg">Esperando a ser llamado...</div>
+        <div class="mesa-info" id="mesa-info" style="display:none;"></div>
+        <p class="sub-msg" id="sub-msg">Por favor espere a ser llamado en la pantalla</p>
+        <div style="margin-top:30px;" id="btn-area">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const turnoId = {{ turno.id }};
+let lastEstado = 'esperando';
+let alertTimeout = null;
+
+async function checkEstado() {
+    try {
+        const resp = await fetch(`/api/estado-turno/${turnoId}/`);
+        const data = await resp.json();
+        const estado = data.estado;
+
+        if (estado === lastEstado) return;
+        lastEstado = estado;
+
+        const icon = document.getElementById('status-icon');
+        const title = document.getElementById('status-title');
+        const msg = document.getElementById('status-msg');
+        const mesa = document.getElementById('mesa-info');
+        const sub = document.getElementById('sub-msg');
+        const btnArea = document.getElementById('btn-area');
+
+        // Limpiar clases del body
+        document.body.classList.remove('llamado', 'completado', 'cancelado');
+        icon.classList.remove('esperando', 'llamado', 'completado', 'cancelado');
+
+        if (estado === 'llamado') {
+            document.body.classList.add('llamado');
+            icon.classList.add('llamado');
+            icon.textContent = 'notifications_active';
+            title.textContent = '¡Lo están llamando!';
+            msg.textContent = 'Diríjase a la mesa de atención';
+            mesa.style.display = 'block';
+            mesa.textContent = '➜ ' + data.mesa;
+            sub.textContent = 'Tiene unos momentos para presentarse';
+            btnArea.innerHTML = '';
+
+            // Alerta fullscreen
+            const alertDiv = document.getElementById('llamado-alert');
+            document.getElementById('alert-mesa').textContent = '➜ ' + data.mesa;
+            alertDiv.style.display = 'flex';
+
+            // Vibrar si es posible
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+
+            // Ocultar alerta después de 5 segundos
+            if (alertTimeout) clearTimeout(alertTimeout);
+            alertTimeout = setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 5000);
+
+        } else if (estado === 'atendiendo') {
+            document.body.classList.add('llamado');
+            icon.classList.add('llamado');
+            icon.textContent = 'person_pin';
+            title.textContent = 'Siendo atendido';
+            msg.textContent = 'Su turno está en atención';
+            mesa.style.display = 'block';
+            mesa.textContent = '➜ ' + data.mesa;
+            sub.textContent = '';
+            btnArea.innerHTML = '';
+            document.getElementById('llamado-alert').style.display = 'none';
+
+        } else if (estado === 'completado') {
+            document.body.classList.add('completado');
+            icon.classList.add('completado');
+            icon.textContent = 'check_circle';
+            title.textContent = 'Atención completada';
+            msg.textContent = 'Su turno ha finalizado';
+            mesa.style.display = 'none';
+            sub.textContent = 'Gracias por su visita';
+            btnArea.innerHTML = '<a href="/" class="btn waves-effect" style="background:#1565c0;border-radius:8px;"><i class="material-icons left">refresh</i> Nuevo Turno</a>';
+            document.getElementById('llamado-alert').style.display = 'none';
+
+        } else if (estado === 'cancelado') {
+            document.body.classList.add('cancelado');
+            icon.classList.add('cancelado');
+            icon.textContent = 'error_outline';
+            title.textContent = 'Turno pasado';
+            msg.textContent = 'Su turno ya no está vigente';
+            mesa.style.display = 'none';
+            sub.textContent = 'Puede solicitar un nuevo turno';
+            btnArea.innerHTML = '<a href="/" class="btn waves-effect" style="background:#e53935;border-radius:8px;"><i class="material-icons left">refresh</i> Solicitar Nuevo Turno</a>';
+            document.getElementById('llamado-alert').style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Error polling:', e);
+    }
+}
+
+// Polling cada 3 segundos
+setInterval(checkEstado, 3000);
+checkEstado();
+</script>
+{% endblock %}

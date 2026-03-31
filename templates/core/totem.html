@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Registro{% endblock %}
+{% block extra_css %}
+html, body { height: 100%; margin: 0; }
+body { background: linear-gradient(135deg, var(--totem-fondo1) 0%, var(--totem-fondo2) 50%, var(--totem-fondo3) 100%); }
+.totem-container {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+}
+.totem-card {
+    width: 100%; max-width: 600px; border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.totem-header {
+    background: linear-gradient(135deg, var(--totem-header1), var(--totem-header2));
+    padding: 30px; text-align: center; border-radius: 16px 16px 0 0;
+}
+.totem-header h4 { color: white; margin: 0; font-weight: 700; font-size: 2rem; }
+.totem-header p { color: rgba(255,255,255,0.9); margin: 5px 0 0; }
+.totem-body { padding: 30px; }
+#video-container {
+    position: relative; width: 100%; max-width: 400px; margin: 0 auto 20px;
+    border-radius: 12px; overflow: hidden; background: #000;
+    aspect-ratio: 4/3;
+}
+#video-container video { width: 100%; height: 100%; object-fit: cover; }
+#video-container canvas { display: none; }
+.camera-overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    border: 3px dashed rgba(255,255,255,0.5); border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    pointer-events: none; padding-top: 10px;
+}
+.camera-overlay span { color: rgba(255,255,255,0.9); font-size: 0.85rem; background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 6px; }
+.mrz-guide {
+    position: absolute; bottom: 0; left: 5%; right: 5%; height: 38%;
+    border: 2px solid #00e676; border-radius: 6px;
+    background: rgba(0, 230, 118, 0.08);
+}
+.mrz-guide::after {
+    content: '▲ Zona MRZ aquí ▲'; position: absolute; top: -22px; left: 50%;
+    transform: translateX(-50%); color: #00e676; font-size: 0.7rem;
+    background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+}
+.input-field label { font-size: 1rem; }
+.input-field input { font-size: 1.1rem; }
+.btn-capture {
+    background: linear-gradient(135deg, var(--btn-llamar1), var(--btn-llamar2)) !important;
+    width: 100%; height: 48px; font-size: 1.1rem; border-radius: 8px;
+}
+.btn-register {
+    background: linear-gradient(135deg, var(--btn-completar1), var(--btn-completar2)) !important;
+    width: 100%; height: 52px; font-size: 1.2rem; border-radius: 8px;
+    margin-top: 10px;
+}
+.step-indicator {
+    display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;
+}
+.step { width: 12px; height: 12px; border-radius: 50%; background: #e0e0e0; transition: all 0.3s; }
+.step.active { background: #ff6f00; transform: scale(1.3); }
+#step1, #step2 { display: none; }
+#step1.active-step, #step2.active-step { display: block; }
+{% endblock %}
+
+{% block body %}
+<div class="totem-container">
+    <div class="card totem-card">
+        <div class="totem-header">
+            <h4><i class="material-icons" style="vertical-align:middle;font-size:2rem;">assignment_ind</i> TotemIA</h4>
+            <p>Sistema de Atención</p>
+        </div>
+        <div class="totem-body">
+            <div class="step-indicator">
+                <div class="step active" id="dot1"></div>
+                <div class="step" id="dot2"></div>
+            </div>
+
+            <!-- PASO 1: Cámara -->
+            <div id="step1" class="active-step">
+                <p class="center-align grey-text text-darken-1" style="margin-bottom:15px;">
+                    Posicione el <strong>reverso</strong> de su cédula con el código MRZ dentro del recuadro verde
+                </p>
+                <div id="video-container">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="camera-overlay">
+                        <span id="camera-status">Iniciando cámara...</span>
+                        <div class="mrz-guide"></div>
+                    </div>
+                </div>
+                <button class="btn btn-capture waves-effect" onclick="capturarImagen()">
+                    <i class="material-icons left">camera_alt</i> Capturar Manual
+                </button>
+                <p class="center-align" style="margin-top:15px;">
+                    <button class="btn waves-effect" onclick="saltarCaptura()" style="width:100%; height:48px; font-size:1.05rem; border-radius:8px; background:linear-gradient(135deg,#1565c0,#1e88e5);">
+                        <i class="material-icons left">edit</i> Ingresar Datos Manualmente
+                    </button>
+                </p>
+            </div>
+
+            <!-- PASO 2: Formulario -->
+            <div id="step2">
+                <div class="input-field">
+                    <i class="material-icons prefix">person</i>
+                    <input id="nombre" type="text" required>
+                    <label for="nombre">Nombre Completo *</label>
+                </div>
+                <div class="input-field">
+                    <i class="material-icons prefix">badge</i>
+                    <input id="rut" type="text" placeholder="12.345.678-9">
+                    <label for="rut" class="active">RUT</label>
+                </div>
+                <div class="input-field">
+                    <i class="material-icons prefix">cake</i>
+                    <input id="fecha_nacimiento" type="date">
+                    <label for="fecha_nacimiento" class="active">Fecha de Nacimiento</label>
+                </div>
+                <div class="input-field">
+                    <i class="material-icons prefix">phone</i>
+                    <input id="telefono" type="tel" required>
+                    <label for="telefono">Teléfono *</label>
+                </div>
+                <div class="input-field">
+                    <i class="material-icons prefix">email</i>
+                    <input id="email" type="email">
+                    <label for="email">Correo Electrónico (opcional)</label>
+                </div>
+                <button class="btn btn-register waves-effect" onclick="registrar()" id="btnRegistrar">
+                    <i class="material-icons left">check_circle</i> Obtener Turno
+                </button>
+                <p class="center-align" style="margin-top:10px;">
+                    <a href="#" onclick="volverPaso1()" class="brand-text" style="font-size:0.9rem;">
+                        <i class="material-icons tiny">arrow_back</i> Volver a cámara
+                    </a>
+                </p>
+            </div>
+
+            <div id="loading" style="display:none;text-align:center;padding:40px;">
+                <div class="preloader-wrapper big active">
+                    <div class="spinner-layer spinner-blue-only">
+                        <div class="circle-clipper left"><div class="circle"></div></div>
+                        <div class="gap-patch"><div class="circle"></div></div>
+                        <div class="circle-clipper right"><div class="circle"></div></div>
+                    </div>
+                </div>
+                <p class="grey-text">Procesando...</p>
+            </div>
+
+            <!-- Debug OCR -->
+            <div id="debug-panel" style="display:none; margin-top:15px; background:#263238; border-radius:10px; padding:15px; max-height:300px; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="color:#80cbc4; font-weight:700; font-size:0.9rem;">🔍 Debug OCR</span>
+                    <a href="#" onclick="document.getElementById('debug-panel').style.display='none'; return false;" style="color:#ef9a9a; font-size:0.8rem;">Cerrar</a>
+                </div>
+                <div style="color:#aaa; font-size:0.75rem; margin-bottom:6px;">Texto crudo:</div>
+                <pre id="debug-raw" style="color:#e0e0e0; font-size:0.75rem; white-space:pre-wrap; word-break:break-all; margin:0 0 10px; padding:8px; background:#1a1a2e; border-radius:6px; max-height:120px; overflow-y:auto;"></pre>
+                <div style="color:#aaa; font-size:0.75rem; margin-bottom:6px;">Líneas detectadas:</div>
+                <div id="debug-lines" style="font-size:0.75rem; color:#e0e0e0; margin-bottom:10px;"></div>
+                <div style="color:#aaa; font-size:0.75rem; margin-bottom:6px;">Resultado parseado:</div>
+                <div id="debug-parsed" style="font-size:0.8rem; color:#a5d6a7;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+let video, canvas, ctx;
+let scanInterval = null;
+let scanning = false;
+let mrzDetected = false;
+let tesseractWorker = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    video = document.getElementById('video');
+    canvas = document.getElementById('canvas');
+    ctx = canvas.getContext('2d');
+    iniciarCamara();
+});
+
+async function iniciarCamara() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'environment',
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                focusMode: { ideal: 'continuous' },
+                focusDistance: { ideal: 0 },
+            }
+        });
+        video.srcObject = stream;
+
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        }
+        document.getElementById('camera-status').textContent = 'Buscando MRZ...';
+
+        // Iniciar escaneo continuo después de que el video esté listo
+        video.addEventListener('playing', () => {
+            if (!scanInterval) iniciarEscaneo();
+        });
+    } catch (e) {
+        document.getElementById('camera-status').textContent = 'Cámara no disponible';
+        console.error('Error cámara:', e);
+    }
+}
+
+function iniciarEscaneo() {
+    if (scanInterval) return;
+    scanning = true;
+    mrzDetected = false;
+    scanInterval = setInterval(() => escanearFrame(), 1500);
+    console.log('Escaneo continuo iniciado');
+}
+
+function detenerEscaneo() {
+    scanning = false;
+    if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+    }
+}
+
+function capturarFrameMRZ() {
+    // Capturar solo el 40% inferior (zona MRZ)
+    const fullW = video.videoWidth;
+    const fullH = video.videoHeight;
+    if (fullW === 0 || fullH === 0) return null;
+
+    const cropY = Math.floor(fullH * 0.6);
+    const cropH = fullH - cropY;
+
+    canvas.width = fullW;
+    canvas.height = cropH;
+    ctx.drawImage(video, 0, cropY, fullW, cropH, 0, 0, fullW, cropH);
+
+    // Binarizar para mejorar OCR
+    const imageData = ctx.getImageData(0, 0, fullW, cropH);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+        const val = avg > 140 ? 255 : 0;
+        d[i] = d[i+1] = d[i+2] = val;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+}
+
+function limpiarTextoMRZ(text) {
+    let cleaned = text.replace(/\n/g, '').replace(/\s/g, '').toUpperCase();
+    cleaned = cleaned.replace(/«/g, '<<').replace(/[{}()\[\]]/g, '<');
+    cleaned = cleaned.replace(/[^A-Z0-9<]/g, '');
+    return cleaned;
+}
+
+function getTokensFromEnd(text) {
+    return limpiarTextoMRZ(text).split('<').filter(t => t.length > 0);
+}
+
+function validarMRZ(text) {
+    const tokens = getTokensFromEnd(text);
+    if (tokens.length < 7) return false;
+    const len = tokens.length;
+
+    // Últimos 2 tokens deben ser nombres (solo letras)
+    if (!/^[A-Z]+$/.test(tokens[len - 1])) return false;
+    if (!/^[A-Z]+$/.test(tokens[len - 2])) return false;
+
+    // Segmento [-7]: largo >15 chars, empieza con 6 dígitos que parecen fecha
+    const segLargo = tokens[len - 7] || '';
+    if (segLargo.length < 15) return false;
+    const fecha = segLargo.substring(0, 6).replace(/O/g, '0');
+    if (!/^\d{6}$/.test(fecha)) return false;
+    const mm = parseInt(fecha.substring(2, 4));
+    const dd = parseInt(fecha.substring(4, 6));
+    return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
+}
+
+async function escanearFrame() {
+    if (!scanning || mrzDetected || !video.srcObject) return;
+    const dataUrl = capturarFrameMRZ();
+    if (!dataUrl) return;
+
+    try {
+        const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng');
+        if (validarMRZ(text)) {
+            mrzDetected = true;
+            detenerEscaneo();
+            document.getElementById('camera-status').textContent = '✓ MRZ detectado';
+            document.getElementById('step1').classList.remove('active-step');
+            document.getElementById('loading').style.display = 'block';
+
+            await new Promise(r => setTimeout(r, 300));
+            const dataUrl2 = capturarFrameMRZ();
+            const { data: { text: text2 } } = await Tesseract.recognize(dataUrl2 || dataUrl, 'eng');
+            const finalText = validarMRZ(text2) ? text2 : text;
+
+            document.getElementById('loading').style.display = 'none';
+            parsearMRZ(finalText);
+            mostrarPaso2();
+            M.toast({html: 'Cédula leída correctamente', classes: 'green', displayLength: 2000});
+        } else {
+            const tokens = getTokensFromEnd(text);
+            document.getElementById('camera-status').textContent =
+                tokens.length > 3 ? `Detectando... (${tokens.length} tokens)` : 'Buscando MRZ...';
+        }
+    } catch (e) { console.log('Scan error:', e); }
+}
+
+async function capturarImagen() {
+    detenerEscaneo();
+    mrzDetected = true;
+    if (!video.srcObject) {
+        M.toast({html: 'Cámara no disponible.', classes: 'red'});
+        saltarCaptura();
+        return;
+    }
+    document.getElementById('step1').classList.remove('active-step');
+    document.getElementById('loading').style.display = 'block';
+    try {
+        const dataUrl = capturarFrameMRZ();
+        const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng');
+        parsearMRZ(text);
+    } catch (e) {
+        M.toast({html: 'Error al leer.', classes: 'orange'});
+    }
+    document.getElementById('loading').style.display = 'none';
+    mostrarPaso2();
+}
+
+function parsearMRZ(text) {
+    const debugPanel = document.getElementById('debug-panel');
+    debugPanel.style.display = 'block';
+    document.getElementById('debug-raw').textContent = text;
+
+    const cleaned = limpiarTextoMRZ(text);
+    const tokens = cleaned.split('<').filter(t => t.length > 0);
+    const len = tokens.length;
+
+    document.getElementById('debug-lines').innerHTML = tokens.map((t, i) =>
+        `<div style="padding:2px 6px; margin:2px 0; background:#1a1a2e; border-radius:4px;"><span style="color:#ffcc80;">[${i}]</span> <span style="color:#80cbc4;">[final-${len - 1 - i}]</span> ${t}</div>`
+    ).join('');
+
+    let d = [];
+    d.push(`Total tokens: ${len}`);
+
+    if (len < 7) {
+        d.push('Tokens insuficientes');
+        document.getElementById('debug-parsed').innerHTML = d.map(x => `<div>✔ ${x}</div>`).join('');
+        return;
+    }
+
+    // NOMBRES desde el final: [-1]=nombre2, [-2]=nombre1, [-3]=materno, [-4]=paterno
+    const nombre2 = tokens[len - 1] || '';
+    const nombre1 = tokens[len - 2] || '';
+    const materno = tokens[len - 3] || '';
+    const paterno = tokens[len - 4] || '';
+
+    let nombres = '', apellidos = '';
+    if (/^[A-Z]+$/.test(paterno) && /^[A-Z]+$/.test(materno) && /^[A-Z]+$/.test(nombre1)) {
+        apellidos = `${paterno} ${materno}`;
+        nombres = /^[A-Z]+$/.test(nombre2) ? `${nombre1} ${nombre2}` : nombre1;
+    }
+    const nombreCompleto = `${nombres} ${apellidos}`.trim();
+    d.push(`[-4] paterno: ${paterno}`);
+    d.push(`[-3] materno: ${materno}`);
+    d.push(`[-2] nombre1: ${nombre1}`);
+    d.push(`[-1] nombre2: ${nombre2}`);
+    d.push(`→ ${nombreCompleto}`);
+    if (nombreCompleto.length > 2) {
+        document.getElementById('nombre').value = nombreCompleto;
+        M.updateTextFields();
+    }
+
+    // RUN: [-5]=check, [-6]=DV, [-7]=segmento largo (últimos 8 dígitos = RUN)
+    const dvRun = tokens[len - 6] || '';
+    const segLargo = tokens[len - 7] || '';
+    const soloDigitos = segLargo.replace(/[^0-9]/g, '');
+
+    d.push(`[-6] DV: ${dvRun}`);
+    d.push(`[-7] seg: ${segLargo}`);
+    d.push(`[-7] dígitos: ${soloDigitos} (${soloDigitos.length})`);
+
+    if (soloDigitos.length >= 8 && dvRun.length >= 1) {
+        const runBody = soloDigitos.slice(-8);
+        const dv = dvRun.replace(/[^0-9Kk]/g, '');
+        let fmt = runBody;
+        if (runBody.length === 8) fmt = runBody.slice(0,2)+'.'+runBody.slice(2,5)+'.'+runBody.slice(5);
+        else if (runBody.length === 7) fmt = runBody.slice(0,1)+'.'+runBody.slice(1,4)+'.'+runBody.slice(4);
+        const rut = `${fmt}-${dv}`;
+        document.getElementById('rut').value = rut;
+        M.updateTextFields();
+        d.push(`RUN: ${rut}`);
+    }
+
+    // FECHA: primeros 6 dígitos del segmento [-7]
+    const fechaRaw = segLargo.substring(0, 6).replace(/O/g, '0');
+    d.push(`Fecha raw: ${fechaRaw}`);
+    if (/^\d{6}$/.test(fechaRaw)) {
+        const yy = parseInt(fechaRaw.substring(0, 2));
+        const mm = fechaRaw.substring(2, 4);
+        const dd = fechaRaw.substring(4, 6);
+        const yyyy = yy > 30 ? `19${fechaRaw.substring(0,2)}` : `20${fechaRaw.substring(0,2)}`;
+        document.getElementById('fecha_nacimiento').value = `${yyyy}-${mm}-${dd}`;
+        M.updateTextFields();
+        d.push(`Fecha: ${dd}/${mm}/${yyyy}`);
+    }
+
+    document.getElementById('debug-parsed').innerHTML = d.map(x => `<div>✔ ${x}</div>`).join('');
+}
+
+function saltarCaptura() {
+    mostrarPaso2();
+}
+
+function mostrarPaso2() {
+    document.getElementById('step1').classList.remove('active-step');
+    document.getElementById('step2').classList.add('active-step');
+    document.getElementById('dot1').classList.remove('active');
+    document.getElementById('dot2').classList.add('active');
+    M.updateTextFields();
+}
+
+function volverPaso1() {
+    document.getElementById('step2').classList.remove('active-step');
+    document.getElementById('step1').classList.add('active-step');
+    document.getElementById('dot2').classList.remove('active');
+    document.getElementById('dot1').classList.add('active');
+    // Reiniciar escaneo
+    mrzDetected = false;
+    iniciarEscaneo();
+}
+
+async function registrar() {
+    const nombre = document.getElementById('nombre').value.trim();
+    const telefono = document.getElementById('telefono').value.trim();
+
+    if (!nombre) { M.toast({html: 'Ingrese el nombre', classes: 'red'}); return; }
+    if (!telefono) { M.toast({html: 'Ingrese el teléfono', classes: 'red'}); return; }
+
+    document.getElementById('btnRegistrar').disabled = true;
+
+    try {
+        const resp = await fetch('/api/registrar-turno/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                nombre_completo: nombre,
+                rut: document.getElementById('rut').value.trim(),
+                fecha_nacimiento: document.getElementById('fecha_nacimiento').value,
+                telefono: telefono,
+                email: document.getElementById('email').value.trim(),
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            window.location.href = `/turno-confirmado/${data.turno_id}/`;
+        } else {
+            M.toast({html: data.error || 'Error al registrar', classes: 'red'});
+            document.getElementById('btnRegistrar').disabled = false;
+        }
+    } catch (e) {
+        M.toast({html: 'Error de conexión', classes: 'red'});
+        document.getElementById('btnRegistrar').disabled = false;
+    }
+}
+</script>
+{% endblock %}

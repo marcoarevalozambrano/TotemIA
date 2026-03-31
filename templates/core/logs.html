@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Logs{% endblock %}
+{% block extra_css %}
+body { background: #f5f5f5; }
+.admin-nav { background: linear-gradient(135deg, #1565c0, #0d47a1) !important; }
+.admin-container { max-width: 1200px; margin: 20px auto; padding: 0 15px; }
+.log-card { border-radius: 12px; }
+{% endblock %}
+
+{% block body %}
+<nav class="admin-nav">
+    <div class="nav-wrapper" style="padding:0 20px;">
+        <a href="#" class="brand-logo">
+            <i class="material-icons">list_alt</i> TotemIA - Logs
+        </a>
+        <ul class="right">
+            <li><a href="{% url 'core:admin_panel' %}"><i class="material-icons left">dashboard</i>Panel</a></li>
+            <li><a href="{% url 'core:logout' %}"><i class="material-icons">exit_to_app</i></a></li>
+        </ul>
+    </div>
+</nav>
+
+<div class="admin-container">
+    <div class="card log-card">
+        <div class="card-content">
+            <span class="card-title"><i class="material-icons brand-text">history</i> Registro de Actividad</span>
+            <table class="striped responsive-table">
+                <thead>
+                    <tr>
+                        <th>Fecha/Hora</th>
+                        <th>Turno</th>
+                        <th>Usuario</th>
+                        <th>Acción</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.timestamp|date:"d/m/Y H:i:s" }}</td>
+                        <td><strong>{{ log.turno.codigo }}</strong></td>
+                        <td>{{ log.usuario.get_full_name|default:log.usuario.username|default:"-" }}</td>
+                        <td>
+                            {% if log.accion == 'llamado' %}
+                            <span class="new badge blue" data-badge-caption="">{{ log.accion }}</span>
+                            {% elif log.accion == 'completado' %}
+                            <span class="new badge green" data-badge-caption="">{{ log.accion }}</span>
+                            {% else %}
+                            <span class="new badge grey" data-badge-caption="">{{ log.accion }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.detalle }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="center-align grey-text">No hay logs</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

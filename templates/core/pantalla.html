@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+{% block title %}TotemIA - Pantalla{% endblock %}
+{% block extra_css %}
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--pantalla-fondo); }
+.pantalla-wrapper { height: 100vh; display: flex; flex-direction: column; padding: 20px; }
+.pantalla-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 20px; color: white;
+}
+.pantalla-header h5 { margin: 0; font-weight: 700; font-size: 1.5rem; }
+.clock {
+    font-size: 2.2rem; font-weight: 700; color: #e0e0e0;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 20px rgba(144,202,249,0.3);
+    letter-spacing: 2px;
+    background: rgba(255,255,255,0.06); padding: 6px 18px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.main-area { flex: 1; display: flex; gap: 20px; min-height: 0; overflow: hidden; }
+.current-call {
+    flex: 2; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--pantalla-call1), var(--pantalla-call2));
+    border-radius: 20px; position: relative; overflow: hidden;
+}
+.current-call::before {
+    content: ''; position: absolute; top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+}
+.call-content { text-align: center; z-index: 1; }
+.call-code {
+    font-size: var(--pantalla-codigo-tamano); font-weight: 700; color: var(--pantalla-codigo-color);
+    font-family: var(--pantalla-codigo-fuente);
+    letter-spacing: 15px; line-height: 1;
+    text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+}
+@keyframes marquee {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}
+.call-name {
+    font-size: var(--pantalla-nombre-tamano); color: var(--pantalla-nombre-color); margin-top: 20px;
+    font-family: var(--pantalla-nombre-fuente);
+    font-weight: 500; text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+.call-mesa {
+    font-size: var(--pantalla-mesa-tamano); color: var(--pantalla-mesa-color); margin-top: 20px;
+    font-family: var(--pantalla-mesa-fuente);
+    font-weight: 700; letter-spacing: 3px;
+    text-shadow: 0 3px 15px rgba(0,0,0,0.4);
+}
+.no-call { color: rgba(255,255,255,0.3); font-size: 2rem; }
+.sidebar { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+.waiting-box {
+    background: linear-gradient(135deg, var(--pantalla-espera1), var(--pantalla-espera2));
+    border-radius: 16px; padding: 20px; text-align: center; color: white;
+}
+.waiting-count { font-size: 4rem; font-weight: 700; }
+.history-box {
+    flex: 1; background: rgba(255,255,255,0.05);
+    border-radius: 16px; padding: 15px; overflow-y: auto;
+}
+.history-box::-webkit-scrollbar { width: 6px; }
+.history-box::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 6px; }
+.history-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 6px; }
+.history-box::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+.history-title { color: #90caf9; font-size: 1rem; margin-bottom: 10px; font-weight: 500; }
+.history-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 15px; margin-bottom: 8px;
+    background: rgba(255,255,255,0.08); border-radius: 10px;
+    color: white; transition: all 0.3s;
+}
+.history-item .h-code { font-size: 1.4rem; font-weight: 700; color: var(--pantalla-hist-codigo); min-width: 80px; }
+.history-item .h-name { font-size: 1rem; flex: 1; margin: 0 10px; color: var(--pantalla-hist-nombre); }
+.history-item .h-mesa { font-size: 0.9rem; color: var(--pantalla-hist-mesa); }
+.history-item.completed { opacity: 0.5; }
+@media (max-width: 768px) {
+    .main-area { flex-direction: column; }
+    .call-code { font-size: 5rem; }
+    .call-name { font-size: 1.8rem; }
+    .call-mesa { font-size: 2.5rem; }
+}
+{% endblock %}
+
+{% block body %}
+<div class="pantalla-wrapper">
+    <div class="pantalla-header">
+        <div id="logos-container" style="display:flex; align-items:center; gap:12px; flex-shrink:0;"></div>
+        <div id="marquesina-container" style="flex:1; overflow:hidden; margin:0 15px; display:none;">
+            <div id="marquesina-text" style="white-space:nowrap; animation:marquee 20s linear infinite;"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:15px; flex-shrink:0;">
+            <button id="btn-sonido" onclick="activarSonido()" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); color:white; padding:6px 16px; border-radius:20px; cursor:pointer; font-size:0.9rem;">
+                🔇 Activar Sonido
+            </button>
+            <div class="clock" id="clock"></div>
+        </div>
+    </div>
+    <div class="main-area">
+        <div class="current-call" id="current-call">
+            <div class="call-content">
+                <div class="no-call" id="no-call">Esperando llamado...</div>
+                <div id="call-info" style="display:none;">
+                    <div class="call-code" id="call-code"></div>
+                    <div class="call-name" id="call-name"></div>
+                    <div id="call-pref" style="display:none; margin-top:10px;">
+                        <span style="background:rgba(255,202,40,0.2); color:#ffca28; padding:6px 24px; border-radius:30px; font-size:1.5rem; font-weight:600;">
+                            ⭐ Atención Preferencial
+                        </span>
+                    </div>
+                    <div class="call-mesa" id="call-mesa"></div>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar">
+            <div class="waiting-box">
+                <div style="font-size:1rem;">En Espera</div>
+                <div class="waiting-count" id="waiting-count">0</div>
+                <div style="font-size:0.9rem;">personas</div>
+            </div>
+            <div class="history-box">
+                <div class="history-title">
+                    <i class="material-icons tiny">history</i> Últimos Llamados
+                </div>
+                <div id="history-list"></div>
+            </div>
+            <div id="video-box" style="display:none; border-radius:16px; overflow:hidden; background:#000; position:relative; aspect-ratio:16/9;">
+                <div id="yt-player-div" style="width:100%; height:100%;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="pantalla-footer" style="display:flex; justify-content:flex-end; padding:8px 20px; color:rgba(255,255,255,0.3); font-size:0.8rem;">
+        Powered by TotemIA 2026
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== RELOJ ==========
+function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ========== AUDIO ==========
+let lastCode = '';
+let lastLlamadoEn = '';
+const bellAudio = new Audio('/static/belldoor.wav');
+let sonidoActivado = false;
+let bellPlaying = false;
+
+function activarSonido() {
+    bellAudio.play().then(() => {
+        bellAudio.pause();
+        bellAudio.currentTime = 0;
+        sonidoActivado = true;
+        const btn = document.getElementById('btn-sonido');
+        btn.textContent = '🔊 Sonido Activo';
+        btn.style.background = 'rgba(46,125,50,0.4)';
+        btn.style.borderColor = '#66bb6a';
+    }).catch(e => console.log('Audio blocked:', e));
+}
+
+function playBell() {
+    if (!sonidoActivado) return;
+    bellPlaying = true;
+    muteVideo();
+    bellAudio.currentTime = 0;
+    bellAudio.play().catch(e => console.log('Audio error:', e));
+    bellAudio.onended = () => {
+        bellPlaying = false;
+        unmuteVideo();
+    };
+}
+
+// ========== VIDEO ==========
+let videoList = [];
+let videoIndex = 0;
+let videoMode = 'secuencial';
+let videoVolume = 30;
+let videoPlayer = null;
+let ytPlayer = null;
+let videoEnabled = false;
+let shuffledQueue = []; // Cola barajada para modo aleatorio
+
+async function cargarVideos() {
+    try {
+        const resp = await fetch('/api/videos-pantalla/');
+        const data = await resp.json();
+        const box = document.getElementById('video-box');
+
+        if (!data.habilitado || data.videos.length === 0) {
+            box.style.display = 'none';
+            videoEnabled = false;
+            return;
+        }
+
+        // Solo actualizar config, no reiniciar player si ya está corriendo
+        videoMode = data.modo;
+        videoVolume = data.volumen;
+        if (ytPlayer && ytPlayer.setVolume && !bellPlaying) {
+            ytPlayer.setVolume(videoVolume);
+        }
+
+        if (!videoEnabled) {
+            // Primera carga
+            videoEnabled = true;
+            videoList = data.videos;
+            box.style.display = 'block';
+            if (videoMode === 'aleatorio') {
+                shuffledQueue = []; // Forzar nuevo shuffle
+            }
+            loadYouTubeAPI();
+        } else {
+            // Actualizar lista sin reiniciar reproducción
+            videoList = data.videos;
+            if (videoMode === 'aleatorio') {
+                shuffledQueue = []; // Rebarajar con la nueva lista
+            }
+        }
+    } catch (e) { console.log('Error videos:', e); }
+}
+
+function loadYouTubeAPI() {
+    if (window.YT && window.YT.Player) {
+        initYTPlayer();
+        return;
+    }
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+}
+
+window.onYouTubeIframeAPIReady = function() {
+    initYTPlayer();
+};
+
+function initYTPlayer() {
+    const video = videoList[videoIndex];
+    if (!video) return;
+
+    const match = video.embed_url.match(/embed\/([a-zA-Z0-9_-]{11})/);
+    if (!match) {
+        playWithIframe(video.embed_url);
+        return;
+    }
+
+    ytPlayer = new YT.Player('yt-player-div', {
+        videoId: match[1],
+        playerVars: {
+            autoplay: 1,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+            fs: 0,
+            iv_load_policy: 3,
+        },
+        events: {
+            onReady: (e) => {
+                e.target.setVolume(videoVolume);
+                e.target.playVideo();
+            },
+            onStateChange: (e) => {
+                if (e.data === YT.PlayerState.ENDED) {
+                    advanceVideo();
+                }
+            }
+        }
+    });
+}
+
+function playWithIframe(embedUrl) {
+    const div = document.getElementById('yt-player-div');
+    div.innerHTML = `<iframe id="vimeo-iframe" src="${embedUrl}" style="width:100%;height:100%;border:none;" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+
+    // Usar Vimeo Player API si está disponible
+    if (window.Vimeo && window.Vimeo.Player) {
+        initVimeoPlayer();
+    } else {
+        const tag = document.createElement('script');
+        tag.src = 'https://player.vimeo.com/api/player.js';
+        tag.onload = () => initVimeoPlayer();
+        document.head.appendChild(tag);
+    }
+}
+
+let vimeoPlayer = null;
+
+function initVimeoPlayer() {
+    const iframe = document.getElementById('vimeo-iframe');
+    if (!iframe) return;
+    vimeoPlayer = new Vimeo.Player(iframe);
+    vimeoPlayer.setVolume(videoVolume / 100);
+    vimeoPlayer.on('ended', () => advanceVideo());
+}
+
+function advanceVideo() {
+    if (videoList.length <= 1) {
+        if (ytPlayer && ytPlayer.seekTo) {
+            ytPlayer.seekTo(0);
+            ytPlayer.playVideo();
+        }
+        return;
+    }
+    if (videoMode === 'aleatorio') {
+        // Si la cola está vacía, rebarajar todos los índices (Fisher-Yates)
+        if (shuffledQueue.length === 0) {
+            shuffledQueue = videoList.map((_, i) => i);
+            for (let i = shuffledQueue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffledQueue[i], shuffledQueue[j]] = [shuffledQueue[j], shuffledQueue[i]];
+            }
+            // Evitar que el primero de la nueva cola sea el último que se reprodujo
+            if (shuffledQueue[0] === videoIndex && shuffledQueue.length > 1) {
+                const swap = Math.floor(Math.random() * (shuffledQueue.length - 1)) + 1;
+                [shuffledQueue[0], shuffledQueue[swap]] = [shuffledQueue[swap], shuffledQueue[0]];
+            }
+        }
+        videoIndex = shuffledQueue.shift();
+    } else {
+        videoIndex = (videoIndex + 1) % videoList.length;
+    }
+    playNextVideo();
+}
+
+function playNextVideo() {
+    const video = videoList[videoIndex];
+    if (!video) return;
+
+    const match = video.embed_url.match(/embed\/([a-zA-Z0-9_-]{11})/);
+    if (match && ytPlayer && ytPlayer.loadVideoById) {
+        vimeoPlayer = null; // Limpiar referencia Vimeo
+        ytPlayer.loadVideoById(match[1]);
+        ytPlayer.setVolume(videoVolume);
+    } else if (match && window.YT) {
+        vimeoPlayer = null;
+        initYTPlayer();
+    } else {
+        playWithIframe(video.embed_url);
+    }
+}
+
+function muteVideo() {
+    if (ytPlayer && ytPlayer.mute) ytPlayer.mute();
+    if (vimeoPlayer) vimeoPlayer.setVolume(0);
+}
+
+function unmuteVideo() {
+    if (bellPlaying) return;
+    if (ytPlayer && ytPlayer.unMute) {
+        ytPlayer.unMute();
+        ytPlayer.setVolume(videoVolume);
+    }
+    if (vimeoPlayer) vimeoPlayer.setVolume(videoVolume / 100);
+}
+
+// ========== TURNOS ==========
+async function fetchTurnos() {
+    try {
+        const resp = await fetch('/api/turnos-activos/');
+        const data = await resp.json();
+
+        document.getElementById('waiting-count').textContent = data.en_espera;
+
+        if (data.actual) {
+            document.getElementById('no-call').style.display = 'none';
+            document.getElementById('call-info').style.display = 'block';
+            document.getElementById('call-code').textContent = data.actual.codigo;
+            document.getElementById('call-name').textContent = data.actual.nombre;
+            document.getElementById('call-mesa').textContent = '➜ ' + data.actual.mesa;
+            document.getElementById('call-pref').style.display = data.actual.es_preferencial ? 'block' : 'none';
+
+            if (data.actual.codigo !== lastCode || data.actual.llamado_en !== lastLlamadoEn) {
+                lastCode = data.actual.codigo;
+                lastLlamadoEn = data.actual.llamado_en;
+                playBell();
+                document.getElementById('current-call').style.animation = 'none';
+                setTimeout(() => {
+                    document.getElementById('current-call').style.animation = '';
+                }, 10);
+            }
+        } else {
+            document.getElementById('no-call').style.display = 'block';
+            document.getElementById('call-info').style.display = 'none';
+        }
+
+        const histList = document.getElementById('history-list');
+        histList.innerHTML = '';
+        data.historial.forEach(t => {
+            const cls = t.estado === 'completado' ? 'history-item completed' : 'history-item';
+            histList.innerHTML += `
+                <div class="${cls}">
+                    <span class="h-code">${t.codigo}</span>
+                    <span class="h-name">${t.nombre}${t.es_preferencial ? ' ⭐' : ''}</span>
+                    <span class="h-mesa">${t.mesa}</span>
+                </div>`;
+        });
+    } catch (e) {
+        console.error('Error fetching:', e);
+    }
+}
+
+setInterval(fetchTurnos, 3000);
+fetchTurnos();
+
+// ========== LOGOS & MARQUESINA ==========
+async function cargarLogos() {
+    try {
+        const resp = await fetch('/api/logos-pantalla/');
+        const data = await resp.json();
+        const container = document.getElementById('logos-container');
+        if (data.logos.length === 0) {
+            container.style.display = 'none';
+        } else {
+            container.style.display = 'flex';
+            container.innerHTML = data.logos.map(l =>
+                `<img src="${l.url}" alt="${l.nombre}" style="height:45px; max-width:140px; object-fit:contain; border-radius:6px;">`
+            ).join('');
+        }
+
+        const mqContainer = document.getElementById('marquesina-container');
+        const mqText = document.getElementById('marquesina-text');
+        if (data.marquesina && data.marquesina.texto) {
+            mqText.textContent = data.marquesina.texto;
+            mqText.style.color = data.marquesina.color;
+            mqText.style.fontSize = data.marquesina.tamano_fuente;
+            mqText.style.fontWeight = '600';
+            mqText.style.animationDuration = data.marquesina.velocidad + 's';
+            mqContainer.style.display = 'block';
+        } else {
+            mqContainer.style.display = 'none';
+        }
+    } catch (e) { console.log('Error logos:', e); }
+}
+
+cargarLogos();
+setInterval(cargarLogos, 60000);
+cargarVideos();
+setInterval(cargarVideos, 300000); // Recargar config cada 5 min
+</script>
+{% endblock %}
