@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -9,6 +9,15 @@ from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from openpyxl import Workbook
 from .models import Cliente, Turno, Mesa, LogAtencion, LogoPantalla, MarquesinaPantalla, VideoPantalla, ConfigVideoPantalla, ConfigApariencia
+
+
+def _rango_hoy():
+    """Retorna (inicio, fin) del día actual en zona horaria local, como datetimes aware.
+    Compatible con SQLite y MariaDB cuando USE_TZ=True."""
+    ahora = timezone.localtime(timezone.now())
+    inicio = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin = inicio + timedelta(days=1)
+    return inicio, fin
 
 
 # ============================================================
@@ -102,20 +111,20 @@ def pantalla_view(request):
 
 def turnos_activos(request):
     """API: turnos llamados/atendiendo para la pantalla"""
-    hoy = timezone.now().date()
+    inicio_hoy, fin_hoy = _rango_hoy()
     actual = Turno.objects.filter(
         estado='llamado',
-        llamado_en__date=hoy
+        llamado_en__gte=inicio_hoy, llamado_en__lt=fin_hoy
     ).select_related('cliente', 'mesa').order_by('-llamado_en').first()
 
     historial = Turno.objects.filter(
         estado__in=['atendiendo', 'completado', 'cancelado'],
-        llamado_en__date=hoy
+        llamado_en__gte=inicio_hoy, llamado_en__lt=fin_hoy
     ).select_related('cliente', 'mesa').order_by('-llamado_en')[:5]
 
     en_espera = Turno.objects.filter(
         estado='esperando',
-        creado_en__date=hoy
+        creado_en__gte=inicio_hoy, creado_en__lt=fin_hoy
     ).count()
 
     data = {
@@ -247,9 +256,10 @@ def llamar_turno(request):
 
         # Tomar el siguiente en espera
         # Si la mesa es preferencial, priorizar clientes de tercera edad
+        inicio_hoy, fin_hoy = _rango_hoy()
         turnos_hoy = Turno.objects.filter(
             estado='esperando',
-            creado_en__date=timezone.now().date()
+            creado_en__gte=inicio_hoy, creado_en__lt=fin_hoy
         )
 
         siguiente = None
@@ -388,13 +398,13 @@ def actualizar_cliente(request):
 
 def turnos_espera(request):
     """API: lista de turnos en espera, paginada, con orden preferencial"""
-    hoy = timezone.now().date()
+    inicio_hoy, fin_hoy = _rango_hoy()
     offset = int(request.GET.get('offset', 0))
     limit = int(request.GET.get('limit', 20))
     mesa_id = request.GET.get('mesa_id', '')
 
     queryset = Turno.objects.filter(
-        estado='esperando', creado_en__date=hoy
+        estado='esperando', creado_en__gte=inicio_hoy, creado_en__lt=fin_hoy
     ).select_related('cliente')
 
     total = queryset.count()
@@ -522,8 +532,8 @@ def logout_view(request):
 @login_required
 def admin_panel(request):
     """Panel: admin ve todo, operador ve solo sus métricas"""
-    hoy = timezone.now().date()
-    turnos_hoy = Turno.objects.filter(creado_en__date=hoy).select_related('cliente', 'mesa', 'atendido_por')
+    inicio_hoy, fin_hoy = _rango_hoy()
+    turnos_hoy = Turno.objects.filter(creado_en__gte=inicio_hoy, creado_en__lt=fin_hoy).select_related('cliente', 'mesa', 'atendido_por')
     total_espera = turnos_hoy.filter(estado='esperando').count()
     total_atendidos = turnos_hoy.filter(estado='completado').count()
     total_hoy = turnos_hoy.count()
@@ -606,11 +616,11 @@ def ver_logs(request):
 def api_mis_estadisticas(request):
     """API: estadísticas de la jornada diaria actual"""
     usuario = request.user
-    hoy = timezone.now().date()
+    inicio_hoy, fin_hoy = _rango_hoy()
     ahora = timezone.now()
 
     # Todos los turnos del día
-    turnos_dia = Turno.objects.filter(creado_en__date=hoy).select_related('mesa', 'cliente')
+    turnos_dia = Turno.objects.filter(creado_en__gte=inicio_hoy, creado_en__lt=fin_hoy).select_related('mesa', 'cliente')
 
     # Mis turnos (operador actual)
     mis_turnos = turnos_dia.filter(atendido_por=usuario)
@@ -636,12 +646,12 @@ def api_mis_estadisticas(request):
     # Flujo por hora del día (todos los turnos creados)
     flujo_hora = {}
     for t in turnos_dia:
-        h = t.creado_en.hour
+        h = timezone.localtime(t.creado_en).hour
         flujo_hora[h] = flujo_hora.get(h, 0) + 1
     # Atendidos por hora (completados)
     atendidos_hora = {}
     for t in turnos_dia.filter(estado='completado', completado_en__isnull=False):
-        h = t.completado_en.hour
+        h = timezone.localtime(t.completado_en).hour
         atendidos_hora[h] = atendidos_hora.get(h, 0) + 1
     # Rango de horas del día
     todas_horas = sorted(set(list(flujo_hora.keys()) + list(atendidos_hora.keys())))
