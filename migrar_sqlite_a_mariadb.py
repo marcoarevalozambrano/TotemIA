@@ -17,10 +17,11 @@ import subprocess
 def run(cmd, env=None):
     """Ejecutar comando y mostrar salida"""
     full_env = os.environ.copy()
+    full_env['PYTHONIOENCODING'] = 'utf-8'
     if env:
         full_env.update(env)
     print(f"  $ {cmd}")
-    result = subprocess.run(cmd, shell=True, env=full_env, capture_output=True, text=True)
+    result = subprocess.run(cmd, shell=True, env=full_env, capture_output=True, text=True, encoding='utf-8')
     if result.stdout:
         print(result.stdout)
     if result.returncode != 0:
@@ -46,22 +47,54 @@ def main():
 
     # Paso 1: Exportar datos desde SQLite
     print("1. Exportando datos desde SQLite...")
-    if not run('python manage.py dumpdata --natural-foreign --natural-primary --exclude=contenttypes --exclude=auth.permission --indent=2 -o fixture_backup.json',
-               env={'DB_ENGINE': 'sqlite'}):
-        print("   Fallo al exportar. ¿Existe db.sqlite3?")
-        return
+    os.environ['DB_ENGINE'] = 'sqlite'
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'totem_ia.settings')
+    import django
+    django.setup()
+    from django.core.management import call_command
+    import io
+
+    # Dump a archivo con encoding UTF-8 explícito
+    with open('fixture_backup.json', 'w', encoding='utf-8') as f:
+        call_command('dumpdata',
+                     '--natural-foreign', '--natural-primary',
+                     '--exclude=contenttypes',
+                     '--exclude=auth.permission',
+                     '--exclude=sessions.session',
+                     '--indent=2',
+                     stdout=f)
+    print("   ✅ Exportado a fixture_backup.json")
 
     print()
     print("2. Aplicando migraciones en MariaDB...")
-    if not run('python manage.py migrate', env={'DB_ENGINE': 'mariadb'}):
-        print("   Fallo al migrar. Verifique conexión a MariaDB y .env")
+    # Reconfigurar para MariaDB via subprocess para evitar cache de conexiones
+    from django import db
+    db.connections.close_all()
+
+    migrate_env = os.environ.copy()
+    migrate_env['DB_ENGINE'] = 'mariadb'
+    migrate_env['PYTHONIOENCODING'] = 'utf-8'
+    result = subprocess.run(
+        [sys.executable, 'manage.py', 'migrate', '--verbosity=1'],
+        env=migrate_env, capture_output=True, text=True, encoding='utf-8'
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"   ERROR: {result.stderr}")
         return
+    print("   ✅ Migraciones aplicadas")
 
     print()
     print("3. Importando datos en MariaDB...")
-    if not run('python manage.py loaddata fixture_backup.json', env={'DB_ENGINE': 'mariadb'}):
-        print("   Fallo al importar. Revise el fixture.")
+    result = subprocess.run(
+        [sys.executable, 'manage.py', 'loaddata', 'fixture_backup.json'],
+        env=migrate_env, capture_output=True, text=True, encoding='utf-8'
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(f"   ERROR: {result.stderr}")
         return
+    print("   ✅ Datos importados")
 
     print()
     print("✅ Migración completada exitosamente.")
