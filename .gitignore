@@ -10,3 +10,6 @@ dist/
 build/
 .vscode/
 fixture_backup.json
+backup_mariadb_*.sql
+backup_media_*.zip
+backup_django_*.json
