@@ -2,10 +2,11 @@
 
 ## Documento de Arquitectura, Diseño, Funcionamiento y Características
 
-**Versión:** 1.1  
+**Versión:** 2.0  
 **Fecha:** Marzo 2026  
-**Plataforma:** Django 5.x / Python 3.13 / SQLite  
+**Plataforma:** Django 5.x / Python 3.13 / SQLite + MariaDB 11.8  
 **Repositorio:** https://github.com/marcoarevalozambrano/TotemIA  
+**Rama:** v2.0-mariadb  
 **Autor del desarrollo:** Asistido por IA (Kiro)
 
 ---
@@ -31,7 +32,7 @@ TotemIA es un sistema de gestión de turnos y atención al público diseñado pa
 | Componente | Tecnología |
 |---|---|
 | Backend | Django 5.x (Python 3.13) |
-| Base de datos | SQLite 3 |
+| Base de datos | SQLite 3 (default) / MariaDB 11.8 (configurable) |
 | Frontend | HTML5, CSS3, JavaScript ES6+ |
 | UI Framework | MaterializeCSS 1.0 |
 | OCR | Tesseract.js 5 (client-side) |
@@ -73,8 +74,12 @@ TotemIA/
 │   └── logos/                 # Logos estáticos
 ├── media/                     # Archivos subidos (logos dinámicos)
 ├── run_https.py               # Servidor HTTPS desarrollo (static + media)
+├── run_server.py              # Launcher v2.0 con selección de BD
+├── migrar_sqlite_a_mariadb.py # Script de migración de datos SQLite → MariaDB
 ├── generate_cert.py           # Generador de certificados SSL (SAN configurable)
 ├── cargar_usuarios.py         # Script de carga masiva de usuarios
+├── requirements.txt           # Dependencias Python (incluye mysqlclient)
+├── .env.example               # Plantilla de configuración de BD
 ├── MEMORIA_TECNICA.md         # Este documento
 ├── manage.py                  # CLI Django
 └── db.sqlite3                 # Base de datos
@@ -489,12 +494,43 @@ En la cola de espera de la mesa preferencial, los turnos preferenciales aparecen
 
 ## 8. DESPLIEGUE
 
-### 8.1 Desarrollo Local
+### 8.1 Desarrollo Local (SQLite — default)
 ```bash
 python generate_cert.py          # Generar certificado SSL
 python manage.py migrate          # Aplicar migraciones
 python manage.py createsuperuser  # Crear admin
-python run_https.py               # Iniciar en https://0.0.0.0:8443
+python run_server.py --https      # Iniciar HTTPS con SQLite
+```
+
+### 8.2 Desarrollo Local (MariaDB)
+```bash
+# 1. Crear BD en MariaDB:
+#    CREATE DATABASE totem_ia CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+#    CREATE USER 'totem'@'localhost' IDENTIFIED BY 'password';
+#    GRANT ALL ON totem_ia.* TO 'totem'@'localhost';
+
+# 2. Configurar .env (copiar de .env.example)
+cp .env.example .env
+# Editar .env con credenciales
+
+# 3. Migrar e iniciar
+python run_server.py --db mariadb --migrate --https
+```
+
+### 8.3 Migrar datos existentes de SQLite a MariaDB
+```bash
+python migrar_sqlite_a_mariadb.py
+# Exporta fixture de SQLite, aplica migraciones en MariaDB, importa datos
+```
+
+### 8.4 Launcher unificado (`run_server.py`)
+```bash
+python run_server.py                          # SQLite + HTTP :8000
+python run_server.py --db mariadb             # MariaDB + HTTP :8000
+python run_server.py --https                  # SQLite + HTTPS :8443
+python run_server.py --db mariadb --https     # MariaDB + HTTPS :8443
+python run_server.py --db mariadb --migrate   # MariaDB + migrar + HTTP
+python run_server.py --port 9000              # Puerto personalizado
 ```
 
 ### 8.2 Acceso desde Red Local
@@ -526,6 +562,7 @@ zrok share public localhost:8000
 | openpyxl | Exportación Excel |
 | cryptography | Generación de certificados SSL |
 | Pillow | Procesamiento de imágenes (ImageField) |
+| mysqlclient >= 2.2 | Driver MariaDB/MySQL (solo si DB_ENGINE=mariadb) |
 
 **CDN (frontend):**
 - MaterializeCSS 1.0
