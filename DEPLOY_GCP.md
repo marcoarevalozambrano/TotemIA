@@ -1,35 +1,119 @@
 # Despliegue de TotemIA v2.0 en GCP (Debian 12)
 
 > IP compartida con otros servicios · Dominio temporal gratuito · SSL con Let's Encrypt  
-> Stack: Nginx (reverse proxy) + Gunicorn + Django + MariaDB
+> Stack: Nginx (reverse proxy) + Gunicorn + Django + MariaDB (Docker)
 
 ---
 
-## 1. Datos previos que necesitas tener
+## 0. Diagnóstico previo de la VM
 
-| Dato | Ejemplo | Notas |
-|------|---------|-------|
-| IP pública de la VM | `34.xx.xx.xx` | La obtienes de la consola GCP |
-| Puerto libre para la app | `8000` (interno) | Gunicorn escuchará aquí, Nginx hace proxy |
-| Dominio temporal | `totem-ia.duckdns.org` | Lo crearemos en el paso 2 |
-| Token DuckDNS | (se genera al registrarse) | Para actualizar el DNS |
+Ejecutar estos comandos en la VM y compartir la salida para evaluar el estado actual:
+
+```bash
+echo "===== SISTEMA ====="
+uname -a
+cat /etc/debian_version
+
+echo ""
+echo "===== IP PÚBLICA ====="
+curl -s ifconfig.me
+
+echo ""
+echo "===== PUERTOS EN USO ====="
+sudo ss -tlnp
+
+echo ""
+echo "===== DOCKER ====="
+docker --version 2>/dev/null || echo "NO INSTALADO"
+docker compose version 2>/dev/null || echo "NO INSTALADO"
+docker ps -a 2>/dev/null || echo "NO ACCESIBLE"
+
+echo ""
+echo "===== NGINX ====="
+nginx -v 2>&1 || echo "NO INSTALADO"
+sudo systemctl is-active nginx 2>/dev/null || echo "NO ACTIVO"
+ls /etc/nginx/sites-enabled/ 2>/dev/null || echo "SIN SITES"
+
+echo ""
+echo "===== PYTHON ====="
+python3 --version 2>/dev/null || echo "NO INSTALADO"
+pip3 --version 2>/dev/null || echo "NO INSTALADO"
+
+echo ""
+echo "===== GIT ====="
+git --version 2>/dev/null || echo "NO INSTALADO"
+
+echo ""
+echo "===== CERTBOT ====="
+certbot --version 2>/dev/null || echo "NO INSTALADO"
+
+echo ""
+echo "===== LIBMARIADB-DEV (necesario para mysqlclient) ====="
+dpkg -l | grep libmariadb-dev 2>/dev/null || echo "NO INSTALADO"
+
+echo ""
+echo "===== BUILD TOOLS ====="
+gcc --version 2>/dev/null | head -1 || echo "gcc NO INSTALADO"
+pkg-config --version 2>/dev/null || echo "pkg-config NO INSTALADO"
+
+echo ""
+echo "===== DISCO ====="
+df -h /
+
+echo ""
+echo "===== MEMORIA ====="
+free -h
+
+echo ""
+echo "===== FIREWALL GCP (reglas locales) ====="
+sudo iptables -L -n 2>/dev/null | head -20 || echo "NO ACCESIBLE"
+```
+
+### Resultado del diagnóstico
+
+| Componente | Estado | Acción |
+|------------|--------|--------|
+| Debian 12 (6.1.0-41-cloud-amd64) | ✅ OK | — |
+| IP pública: `34.172.84.111` | ✅ OK | — |
+| Nginx (activo, puertos 80/443) | ✅ Instalado | Solo agregar server block |
+| Sites existentes: `default`, `klinexia`, `pet24`, `pet24real` | ✅ OK | No tocar |
+| Python 3.11.2 | ✅ Instalado | — |
+| pip 23.0.1 | ✅ Instalado | — |
+| Git 2.39.5 | ✅ Instalado | — |
+| Certbot 2.1.0 | ✅ Instalado | — |
+| gcc 12.2.0 | ✅ Instalado | — |
+| pkg-config 1.8.1 | ✅ Instalado | — |
+| Docker | ❌ No instalado | **Instalar** |
+| libmariadb-dev | ❌ No instalado | **Instalar** |
+| Disco: 40GB libres | ✅ OK | — |
+| RAM: 3.8GB (2.6GB disponible) | ✅ OK | — |
+| Firewall: ACCEPT all | ✅ OK | Verificar reglas GCP |
+
+---
+
+## 1. Datos de este despliegue
+
+| Dato | Valor |
+|------|-------|
+| IP pública de la VM | `34.172.84.111` |
+| Puerto interno Gunicorn | `8000` (solo localhost) |
+| Puerto MariaDB Docker | `3306` (solo localhost) |
+| Dominio temporal | `totem-ia.duckdns.org` (o el que elijas) |
+| Repo | `https://github.com/marcoarevalozambrano/TotemIA.git` rama `v2.0-mariadb` |
 
 ---
 
 ## 2. Obtener dominio temporal gratuito (DuckDNS)
 
-DuckDNS es gratuito, no requiere tarjeta, y funciona perfecto para esto.
-
 1. Ir a [https://www.duckdns.org](https://www.duckdns.org)
 2. Iniciar sesión con Google/GitHub/etc.
 3. Crear un subdominio, por ejemplo: `totem-ia` → te queda `totem-ia.duckdns.org`
-4. Apuntar el dominio a tu IP pública de GCP
-5. Anotar el **token** que te da DuckDNS (lo necesitarás)
+4. Apuntar el dominio a `34.172.84.111`
+5. Anotar el **token** que te da DuckDNS
 
 ### Actualizar DNS automáticamente (cron)
 
 ```bash
-# Crear script de actualización
 mkdir -p ~/duckdns
 cat > ~/duckdns/duck.sh << 'EOF'
 #!/bin/bash
@@ -41,72 +125,120 @@ nano ~/duckdns/duck.sh
 
 chmod 700 ~/duckdns/duck.sh
 
-# Probar que funcione
-./duckdns/duck.sh
+# Probar
+~/duckdns/duck.sh
 cat ~/duckdns/duck.log
 # Debe decir "OK"
 
-# Agregar al cron (cada 5 minutos)
+# Cron cada 5 minutos
 (crontab -l 2>/dev/null; echo "*/5 * * * * ~/duckdns/duck.sh >/dev/null 2>&1") | crontab -
 ```
 
 ---
 
-## 3. Preparar la VM (paquetes base)
+## 3. Instalar lo que falta
+
+### 3.1 libmariadb-dev (para compilar mysqlclient de Python)
 
 ```bash
-sudo apt update && sudo apt upgrade -y
+sudo apt update
+sudo apt install -y libmariadb-dev python3-dev
+```
 
-# Paquetes esenciales
-sudo apt install -y \
-  python3 python3-pip python3-venv \
-  nginx \
-  mariadb-server \
-  certbot python3-certbot-nginx \
-  git \
-  libmariadb-dev \
-  pkg-config \
-  build-essential \
-  python3-dev
+### 3.2 Docker
+
+```bash
+# Dependencias
+sudo apt install -y ca-certificates curl gnupg
+
+# Clave GPG de Docker
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Repositorio
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# Usar docker sin sudo
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verificar
+docker --version
+docker compose version
 ```
 
 ---
 
-## 4. Configurar MariaDB
+## 4. Levantar MariaDB en Docker
 
 ```bash
-# Asegurar la instalación
-sudo mysql_secure_installation
-# Responder: Y a todo, definir contraseña de root
+# Directorio para datos persistentes
+sudo mkdir -p /opt/mariadb_data
 
-# Crear base de datos y usuario
-sudo mysql -u root -p
+# Levantar contenedor
+docker run -d \
+  --name mariadb-totem \
+  --restart always \
+  -e MYSQL_ROOT_PASSWORD=ROOT_PASSWORD_SEGURA \
+  -e MYSQL_DATABASE=totem_ia \
+  -e MYSQL_USER=totem \
+  -e MYSQL_PASSWORD=TU_PASSWORD_SEGURA \
+  -e MYSQL_CHARACTER_SET_SERVER=utf8mb4 \
+  -e MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci \
+  -v /opt/mariadb_data:/var/lib/mysql \
+  -p 127.0.0.1:3306:3306 \
+  mariadb:11
 ```
 
-```sql
-CREATE DATABASE totem_ia CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'totem'@'localhost' IDENTIFIED BY 'TU_PASSWORD_SEGURA';
-GRANT ALL PRIVILEGES ON totem_ia.* TO 'totem'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
+> El bind a `127.0.0.1:3306` asegura que MariaDB no queda expuesto a internet.
+
+### Verificar
+
+```bash
+docker ps
+docker logs mariadb-totem
+
+# Probar conexión (esperar ~10 seg a que inicie)
+docker exec -it mariadb-totem mariadb -u totem -p totem_ia -e "SELECT 1;"
+```
+
+### Comandos útiles del contenedor
+
+```bash
+# Logs
+docker logs -f mariadb-totem
+
+# Reiniciar
+docker restart mariadb-totem
+
+# Consola SQL
+docker exec -it mariadb-totem mariadb -u root -p
+
+# Backup
+docker exec mariadb-totem mariadb-dump -u root -pROOT_PASSWORD_SEGURA totem_ia > ~/backup_totem_$(date +%Y%m%d).sql
+
+# Restaurar
+docker exec -i mariadb-totem mariadb -u root -pROOT_PASSWORD_SEGURA totem_ia < ~/backup.sql
 ```
 
 ---
 
 ## 5. Desplegar la aplicación
 
-### 5.1 Clonar o subir el proyecto
+### 5.1 Clonar el proyecto
 
 ```bash
-# Opción A: Si tienes el repo en Git
 cd /opt
-sudo mkdir totem_ia
+sudo mkdir -p totem_ia
 sudo chown $USER:$USER totem_ia
-git clone TU_REPO_URL totem_ia
-
-# Opción B: Subir con scp desde tu máquina local
-# (desde tu PC)
-# scp -r ./totem_ia usuario@IP_VM:/opt/totem_ia
+git clone -b v2.0-mariadb https://github.com/marcoarevalozambrano/TotemIA.git totem_ia
 ```
 
 ### 5.2 Entorno virtual y dependencias
@@ -131,26 +263,36 @@ DB_USER=totem
 DB_PASSWORD=TU_PASSWORD_SEGURA
 DB_HOST=127.0.0.1
 DB_PORT=3306
+SECRET_KEY=GENERA_UNA_CLAVE_AQUI
 EOF
 
 chmod 600 /opt/totem_ia/.env
 ```
 
+Generar la SECRET_KEY:
+
+```bash
+/opt/totem_ia/venv/bin/python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+Copiar el resultado y pegarlo en el `.env` como valor de `SECRET_KEY`.
+
 ### 5.4 Ajustar settings.py para producción
 
-Editar `totem_ia/settings.py` y cambiar:
+Editar `totem_ia/settings.py`:
 
 ```python
-DEBUG = False
-ALLOWED_HOSTS = ['totem-ia.duckdns.org', 'TU_IP_PUBLICA']
+import os
 
-# Agregar a CSRF_TRUSTED_ORIGINS:
+SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-solo-desarrollo')
+DEBUG = False
+ALLOWED_HOSTS = ['totem-ia.duckdns.org', '34.172.84.111']
+
 CSRF_TRUSTED_ORIGINS = [
     'https://totem-ia.duckdns.org',
-    # ... mantener los existentes si los necesitas
 ]
 
-# Archivos estáticos para producción
+# Agregar para producción (collectstatic)
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 ```
 
@@ -159,8 +301,6 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 ```bash
 cd /opt/totem_ia
 source venv/bin/activate
-
-# Cargar variables de entorno
 export $(grep -v '^#' .env | xargs)
 
 python manage.py migrate
@@ -173,10 +313,11 @@ python manage.py createsuperuser
 ## 6. Configurar Gunicorn como servicio systemd
 
 ```bash
-sudo cat > /etc/systemd/system/totem_ia.service << 'EOF'
+sudo tee /etc/systemd/system/totem_ia.service > /dev/null << 'EOF'
 [Unit]
 Description=TotemIA Gunicorn Daemon
-After=network.target mariadb.service
+After=network.target docker.service
+Requires=docker.service
 
 [Service]
 User=www-data
@@ -200,14 +341,10 @@ EOF
 ```
 
 ```bash
-# Crear directorio de logs y ajustar permisos
 sudo mkdir -p /var/log/totem_ia
 sudo chown www-data:www-data /var/log/totem_ia
-
-# Dar permisos a www-data sobre el proyecto
 sudo chown -R www-data:www-data /opt/totem_ia
 
-# Habilitar e iniciar el servicio
 sudo systemctl daemon-reload
 sudo systemctl enable totem_ia
 sudo systemctl start totem_ia
@@ -216,18 +353,15 @@ sudo systemctl status totem_ia
 
 ---
 
-## 7. Configurar Nginx como reverse proxy
+## 7. Agregar server block en Nginx
 
-Como la IP es compartida con otros servicios, usamos un server block separado por dominio.
+Tu Nginx ya tiene: `default`, `klinexia`, `pet24`, `pet24real`. Solo agregamos uno más.
 
 ```bash
-sudo cat > /etc/nginx/sites-available/totem_ia << 'NGINX'
+sudo tee /etc/nginx/sites-available/totem_ia > /dev/null << 'NGINX'
 server {
     listen 80;
     server_name totem-ia.duckdns.org;
-
-    # Redirigir todo HTTP a HTTPS (se activa después de obtener SSL)
-    # return 301 https://$host$request_uri;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -238,20 +372,17 @@ server {
         proxy_redirect off;
     }
 
-    # Archivos estáticos (servidos directamente por Nginx)
     location /static/ {
         alias /opt/totem_ia/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
-    # Archivos media (uploads)
     location /media/ {
         alias /opt/totem_ia/media/;
         expires 7d;
     }
 
-    # Limitar tamaño de uploads
     client_max_body_size 10M;
 }
 NGINX
@@ -259,33 +390,26 @@ NGINX
 
 ```bash
 # Activar el sitio
-sudo ln -s /etc/nginx/sites-available/totem_ia /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/totem_ia /etc/nginx/sites-enabled/
 
-# Verificar configuración
+# Verificar que no rompa los otros sites
 sudo nginx -t
 
-# Recargar Nginx
+# Recargar (sin reiniciar, no afecta los otros servicios)
 sudo systemctl reload nginx
 ```
 
 ---
 
-## 8. Abrir puertos en el firewall de GCP
+## 8. Verificar puertos en firewall GCP
 
-En la consola de GCP → VPC Network → Firewall Rules:
+Tus puertos 80 y 443 ya están abiertos (Nginx ya escucha ahí para los otros sites).  
+Solo verificar que las reglas de firewall de GCP permitan tráfico entrante en 80 y 443.
 
-1. Verificar que exista una regla que permita tráfico TCP en puertos **80** y **443** hacia tu VM
-2. Si no existe, crear una regla:
-   - Nombre: `allow-http-https`
-   - Dirección: Ingress
-   - Destinos: Todas las instancias (o la etiqueta de tu VM)
-   - Rangos de IP de origen: `0.0.0.0/0`
-   - Protocolos y puertos: TCP `80, 443`
-
-También puedes hacerlo por CLI:
+En la consola GCP → VPC Network → Firewall Rules, buscar reglas que incluyan tcp:80 y tcp:443.  
+Si no existen:
 
 ```bash
-# Desde tu máquina local con gcloud instalado, o desde Cloud Shell
 gcloud compute firewall-rules create allow-http-https \
   --allow tcp:80,tcp:443 \
   --source-ranges 0.0.0.0/0 \
@@ -294,31 +418,30 @@ gcloud compute firewall-rules create allow-http-https \
 
 ---
 
-## 9. Obtener certificado SSL gratuito (Let's Encrypt)
+## 9. Obtener certificado SSL (Let's Encrypt)
 
 ```bash
-# Certbot con plugin de Nginx (automático)
 sudo certbot --nginx -d totem-ia.duckdns.org
 
-# Seguir las instrucciones:
-# - Ingresar email
+# Seguir instrucciones:
+# - Email
 # - Aceptar términos
-# - Elegir redirigir HTTP a HTTPS (opción 2, recomendado)
+# - Redirigir HTTP a HTTPS (recomendado)
 ```
 
-Certbot modificará automáticamente tu config de Nginx para agregar SSL.
+Certbot modifica automáticamente el server block de Nginx para agregar SSL.
 
 ### Renovación automática
 
 ```bash
-# Verificar que el timer de renovación esté activo
+# Ya deberías tener el timer activo (certbot ya está instalado)
 sudo systemctl status certbot.timer
 
 # Si no está activo:
 sudo systemctl enable certbot.timer
 sudo systemctl start certbot.timer
 
-# Probar renovación (dry-run)
+# Probar
 sudo certbot renew --dry-run
 ```
 
@@ -327,51 +450,61 @@ sudo certbot renew --dry-run
 ## 10. Verificación final
 
 ```bash
-# 1. Verificar que Gunicorn esté corriendo
+# MariaDB en Docker
+docker ps | grep mariadb-totem
+
+# Gunicorn
 sudo systemctl status totem_ia
 
-# 2. Verificar que Nginx esté corriendo
+# Nginx
 sudo systemctl status nginx
 
-# 3. Probar localmente
+# Test local
 curl -I http://127.0.0.1:8000/
 
-# 4. Probar desde el dominio
+# Test público
 curl -I https://totem-ia.duckdns.org/
 ```
 
-Acceder desde el navegador:
-- Totem: `https://totem-ia.duckdns.org/`
-- Pantalla: `https://totem-ia.duckdns.org/pantalla/`
-- Mesa: `https://totem-ia.duckdns.org/mesa/`
-- Admin: `https://totem-ia.duckdns.org/admin-panel/`
+| Interfaz | URL |
+|----------|-----|
+| Totem | `https://totem-ia.duckdns.org/` |
+| Pantalla | `https://totem-ia.duckdns.org/pantalla/` |
+| Mesa | `https://totem-ia.duckdns.org/mesa/` |
+| Admin | `https://totem-ia.duckdns.org/admin-panel/` |
 
 ---
 
-## 11. Comandos útiles de mantenimiento
+## 11. Comandos de mantenimiento
 
 ```bash
-# Ver logs de la aplicación
+# --- Logs ---
 sudo journalctl -u totem_ia -f
 sudo tail -f /var/log/totem_ia/error.log
+docker logs -f mariadb-totem
 
-# Reiniciar después de cambios en el código
+# --- Reiniciar servicios ---
 sudo systemctl restart totem_ia
-
-# Reiniciar Nginx después de cambios en config
 sudo nginx -t && sudo systemctl reload nginx
+docker restart mariadb-totem
 
-# Actualizar código (si usas git)
+# --- Actualizar código ---
 cd /opt/totem_ia
 sudo -u www-data git pull
 sudo -u www-data /opt/totem_ia/venv/bin/python manage.py migrate
 sudo -u www-data /opt/totem_ia/venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart totem_ia
+
+# --- Backup de BD ---
+docker exec mariadb-totem mariadb-dump -u root -pROOT_PASSWORD_SEGURA totem_ia > ~/backup_totem_$(date +%Y%m%d).sql
+
+# --- Restaurar BD ---
+docker exec -i mariadb-totem mariadb -u root -pROOT_PASSWORD_SEGURA totem_ia < ~/backup.sql
 ```
 
 ---
 
-## Resumen de la arquitectura
+## Arquitectura final
 
 ```
 Internet
@@ -381,9 +514,13 @@ Internet
    │
    ▼
 [Nginx :80/:443]  ← SSL (Let's Encrypt)
-   │                  ├── /static/  → /opt/totem_ia/staticfiles/
-   │                  ├── /media/   → /opt/totem_ia/media/
-   │                  └── /*        → proxy_pass
+   │  ├── klinexia        (site existente)
+   │  ├── pet24           (site existente)
+   │  ├── pet24real       (site existente)
+   │  └── totem-ia.duckdns.org → proxy_pass
+   │        ├── /static/  → /opt/totem_ia/staticfiles/
+   │        ├── /media/   → /opt/totem_ia/media/
+   │        └── /*        → 127.0.0.1:8000
    ▼
 [Gunicorn :8000]  ← 3 workers, solo localhost
    │
@@ -391,18 +528,15 @@ Internet
 [Django - TotemIA]
    │
    ▼
-[MariaDB :3306]   ← solo localhost
+[Docker: MariaDB :3306]  ← solo localhost, datos en /opt/mariadb_data
 ```
 
 ---
 
 ## Notas importantes
 
-- **IP compartida**: Nginx separa los servicios por `server_name` (dominio). Cada servicio en la VM tiene su propio server block. No hay conflicto.
-- **Seguridad**: Gunicorn y MariaDB solo escuchan en `127.0.0.1`. Solo Nginx está expuesto.
-- **DuckDNS**: El dominio es gratuito e indefinido. Si necesitas algo más profesional después, puedes apuntar un dominio real y solo cambiar el `server_name` en Nginx + regenerar el certificado.
-- **SECRET_KEY**: Para producción, genera una nueva clave secreta y ponla en el `.env`:
-  ```bash
-  python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-  ```
-  Y en `settings.py`: `SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-inseguro')`
+- **IP compartida**: Nginx separa por `server_name`. Tu TotemIA convive con klinexia, pet24 y pet24real sin conflicto.
+- **Seguridad**: Gunicorn (`127.0.0.1:8000`) y MariaDB Docker (`127.0.0.1:3306`) no están expuestos a internet.
+- **Persistencia**: Datos de MariaDB en `/opt/mariadb_data`. Si el contenedor se destruye, los datos se mantienen.
+- **Auto-restart**: El contenedor Docker tiene `--restart always` y Gunicorn tiene `Restart=always` en systemd. Ambos se levantan solos al reiniciar la VM.
+- **DuckDNS**: Dominio gratuito e indefinido. Si después necesitas un dominio real, solo cambias `server_name` en Nginx y regeneras el certificado.
