@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-3j1%j8&_jtsz7^#ah8e^e@toe9w9-=$2x#3u&dq4plwa@t_9g)'
 DEBUG = True
-ALLOWED_HOSTS = ['*', '.zrok.io']
+ALLOWED_HOSTS = ['*', '.zrok.io', '.inacap.cl']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -21,6 +21,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'core.middleware.AllowAllHostsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -103,11 +104,21 @@ LOGOUT_REDIRECT_URL = '/admin-panel/login/'
 CSRF_TRUSTED_ORIGINS = [
     'https://127.0.0.1:8443',
     'https://localhost:8443',
-    'https://10.10.48.33:8443',
+    'https://10.10.48.15:8443',
     'http://127.0.0.1:8000',
     'http://localhost:8000',
     'https://*.zrok.io',
+    'http://*.zrok.io',
+    'http://*.inacap.cl:8000',
+    'https://*.inacap.cl:8000',
 ]
+
+# En DEBUG, confiar en el header Origin directamente (para zrok y proxies)
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS += []  # placeholder
+    # Deshabilitar verificación de host en CSRF para desarrollo con proxy
+    CSRF_COOKIE_SAMESITE = None
+    SESSION_COOKIE_SAMESITE = None
 
 # Soporte para proxy reverso (zrok)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

@@ -55,7 +55,7 @@ server = make_server(host, port, application, handler_class=QuietHandler)
 server.socket = ctx.wrap_socket(server.socket, server_side=True)
 
 print(f"TotemIA HTTPS corriendo en https://{host}:{port}/")
-print(f"Desde tu teléfono: https://10.10.48.33:{port}/")
+print(f"Desde tu teléfono: https://10.10.48.15:{port}/")
 print("(Acepta el certificado autofirmado en el navegador)")
 
 server.serve_forever()

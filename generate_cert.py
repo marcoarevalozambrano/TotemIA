@@ -29,7 +29,7 @@ def generate_with_cryptography():
             x509.SubjectAlternativeName([
                 x509.DNSName("localhost"),
                 x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
-                x509.IPAddress(ipaddress.IPv4Address("10.10.48.33")),
+                x509.IPAddress(ipaddress.IPv4Address("10.10.48.15")),
                 x509.IPAddress(ipaddress.IPv4Address("0.0.0.0")),
             ]), critical=False,
         )

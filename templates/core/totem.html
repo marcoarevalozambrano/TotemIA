@@ -111,11 +111,6 @@ body { background: linear-gradient(135deg, var(--totem-fondo1) 0%, var(--totem-f
                     <label for="rut" class="active">RUT</label>
                 </div>
                 <div class="input-field">
-                    <i class="material-icons prefix">cake</i>
-                    <input id="fecha_nacimiento" type="date">
-                    <label for="fecha_nacimiento" class="active">Fecha de Nacimiento</label>
-                </div>
-                <div class="input-field">
                     <i class="material-icons prefix">phone</i>
                     <input id="telefono" type="tel" required>
                     <label for="telefono">Teléfono *</label>
@@ -411,7 +406,7 @@ function parsearMRZ(text) {
         d.push(`RUN: ${rut}`);
     }
 
-    // FECHA: primeros 6 dígitos del segmento [-7]
+    // FECHA: primeros 6 dígitos del segmento [-7] — solo para debug
     const fechaRaw = segLargo.substring(0, 6).replace(/O/g, '0');
     d.push(`Fecha raw: ${fechaRaw}`);
     if (/^\d{6}$/.test(fechaRaw)) {
@@ -419,8 +414,6 @@ function parsearMRZ(text) {
         const mm = fechaRaw.substring(2, 4);
         const dd = fechaRaw.substring(4, 6);
         const yyyy = yy > 30 ? `19${fechaRaw.substring(0,2)}` : `20${fechaRaw.substring(0,2)}`;
-        document.getElementById('fecha_nacimiento').value = `${yyyy}-${mm}-${dd}`;
-        M.updateTextFields();
         d.push(`Fecha: ${dd}/${mm}/${yyyy}`);
     }
 
@@ -465,7 +458,6 @@ async function registrar() {
             body: JSON.stringify({
                 nombre_completo: nombre,
                 rut: document.getElementById('rut').value.trim(),
-                fecha_nacimiento: document.getElementById('fecha_nacimiento').value,
                 telefono: telefono,
                 email: document.getElementById('email').value.trim(),
                 solicita_preferencial: document.getElementById('solicita_preferencial').checked,
