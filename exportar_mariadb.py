@@ -51,6 +51,22 @@ def main():
     print("║    TotemIA — Exportar MariaDB            ║")
     print(f"║    BD: {db_name:<34}║")
     print(f"║    Host: {db_host:<32}║")
+
+    # Detectar modo: Docker o local
+    import shutil
+    mysql_mode = 'local'
+    docker_container = 'mariadb-totem'
+
+    if not shutil.which('mysqldump'):
+        if shutil.which('docker'):
+            result = subprocess.run(
+                ['docker', 'ps', '--filter', f'name={docker_container}', '--format', '{{.Names}}'],
+                capture_output=True, text=True
+            )
+            if docker_container in result.stdout:
+                mysql_mode = 'docker'
+
+    print(f"║    Modo: {'Docker' if mysql_mode == 'docker' else 'Local':<32}║")
     print("╚══════════════════════════════════════════╝")
     print()
 
@@ -59,7 +75,7 @@ def main():
         sql_file = output_dir / f'backup_mariadb_{timestamp}.sql'
         print(f"1. Exportando SQL → {sql_file.name}")
 
-        # Buscar mysqldump en rutas comunes de Windows
+        # Buscar mysqldump
         mysqldump = 'mysqldump'
         for ruta in [
             r'C:\Program Files\MariaDB 11.8\bin\mysqldump.exe',
@@ -70,20 +86,35 @@ def main():
                 mysqldump = ruta
                 break
 
-        cmd = [
-            mysqldump,
-            f'--host={db_host}',
-            f'--port={db_port}',
-            f'--user={db_user}',
-            f'--password={db_pass}',
-            '--single-transaction',
-            '--routines',
-            '--triggers',
-            '--add-drop-table',
-            '--create-options',
-            '--default-character-set=utf8mb4',
-            db_name,
-        ]
+        if mysql_mode == 'docker':
+            cmd = [
+                'docker', 'exec', docker_container,
+                'mariadb-dump',
+                f'--user={db_user}',
+                f'--password={db_pass}',
+                '--single-transaction',
+                '--routines',
+                '--triggers',
+                '--add-drop-table',
+                '--create-options',
+                '--default-character-set=utf8mb4',
+                db_name,
+            ]
+        else:
+            cmd = [
+                mysqldump,
+                f'--host={db_host}',
+                f'--port={db_port}',
+                f'--user={db_user}',
+                f'--password={db_pass}',
+                '--single-transaction',
+                '--routines',
+                '--triggers',
+                '--add-drop-table',
+                '--create-options',
+                '--default-character-set=utf8mb4',
+                db_name,
+            ]
 
         try:
             with open(sql_file, 'w', encoding='utf-8') as f:

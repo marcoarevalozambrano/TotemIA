@@ -35,15 +35,33 @@ def cargar_env():
 
 
 def encontrar_mysql():
+    """Busca el cliente mysql local o detecta Docker."""
+    import shutil
+
+    # 1. Rutas conocidas en Windows
     for ruta in [
         r'C:\Program Files\MariaDB 11.8\bin\mysql.exe',
         r'C:\Program Files\MariaDB 11.7\bin\mysql.exe',
         r'C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe',
-        'mysql',
     ]:
-        if Path(ruta).exists() or ruta == 'mysql':
-            return ruta
-    return 'mysql'
+        if Path(ruta).exists():
+            return ('local', ruta)
+
+    # 2. mysql en PATH (Linux/Mac/Windows)
+    if shutil.which('mysql'):
+        return ('local', 'mysql')
+
+    # 3. Docker: buscar contenedor mariadb-totem
+    if shutil.which('docker'):
+        result = subprocess.run(
+            ['docker', 'ps', '--filter', 'name=mariadb-totem', '--format', '{{.Names}}'],
+            capture_output=True, text=True
+        )
+        if 'mariadb-totem' in result.stdout:
+            return ('docker', 'mariadb-totem')
+
+    # Fallback
+    return ('local', 'mysql')
 
 
 def main():
@@ -67,12 +85,13 @@ def main():
     db_pass = os.environ.get('DB_PASSWORD', '')
     db_host = os.environ.get('DB_HOST', '127.0.0.1')
     db_port = os.environ.get('DB_PORT', '3306')
-    mysql = encontrar_mysql()
+    mysql_mode, mysql_ref = encontrar_mysql()
 
     print("╔══════════════════════════════════════════╗")
     print("║    TotemIA — Importar MariaDB            ║")
     print(f"║    BD: {db_name:<34}║")
     print(f"║    Host: {db_host:<32}║")
+    print(f"║    Modo: {'Docker' if mysql_mode == 'docker' else 'Local':<32}║")
     print("╚══════════════════════════════════════════╝")
     print()
 
@@ -89,8 +108,12 @@ def main():
             f"GRANT ALL PRIVILEGES ON `{db_name}`.* TO '{db_user}'@'localhost'; "
             f"FLUSH PRIVILEGES;"
         )
-        cmd = [mysql, f'--host={db_host}', f'--port={db_port}',
-               '-u', 'root', f'--password={root_pass}', '-e', sql_setup]
+        if mysql_mode == 'docker':
+            cmd = ['docker', 'exec', '-i', mysql_ref,
+                   'mariadb', '-u', 'root', f'--password={root_pass}', '-e', sql_setup]
+        else:
+            cmd = [mysql_ref, f'--host={db_host}', f'--port={db_port}',
+                   '-u', 'root', f'--password={root_pass}', '-e', sql_setup]
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
         if result.returncode != 0:
             print(f"   ❌ Error: {result.stderr[:300]}")
@@ -109,11 +132,18 @@ def main():
         size = sql_file.stat().st_size / 1024
         print(f"   Tamaño: {size:.1f} KB")
 
-        cmd = [mysql,
-               f'--host={db_host}', f'--port={db_port}',
-               f'--user={db_user}', f'--password={db_pass}',
-               '--default-character-set=utf8mb4',
-               db_name]
+        if mysql_mode == 'docker':
+            cmd = ['docker', 'exec', '-i', mysql_ref,
+                   'mariadb',
+                   f'--user={db_user}', f'--password={db_pass}',
+                   '--default-character-set=utf8mb4',
+                   db_name]
+        else:
+            cmd = [mysql_ref,
+                   f'--host={db_host}', f'--port={db_port}',
+                   f'--user={db_user}', f'--password={db_pass}',
+                   '--default-character-set=utf8mb4',
+                   db_name]
 
         with open(sql_file, 'r', encoding='utf-8') as f:
             result = subprocess.run(cmd, stdin=f, capture_output=True, text=True, encoding='utf-8')
